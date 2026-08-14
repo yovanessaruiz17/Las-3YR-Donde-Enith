@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Profile, UserRole } from '../types';
+import { adminAuthService } from '../services/adminAuthService';
 
 interface AuthContextType {
   user: Profile | null;
@@ -10,11 +11,11 @@ interface AuthContextType {
   signInWithEmail: (email: string, pass: string) => Promise<{ error: Error | null }>;
   signUpWithEmail: (email: string, pass: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
-  loginAsDemoAdmin: () => void;
+  loginAdminWithCredentials: (email: string, pass: string, totpCode: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const DEMO_USER_KEY = 'las3yr_demo_user_v1';
+const DEMO_USER_KEY = 'las3yr_session_user_v2';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<Profile | null>(() => {
@@ -66,15 +67,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (!error && data) {
-        setUser(data as Profile);
+        const profile: Profile = {
+          id: data.id,
+          email: data.email || email,
+          full_name: data.full_name || email.split('@')[0],
+          phone: data.phone,
+          role: data.role === 'admin' ? 'admin' : 'customer',
+          created_at: data.created_at || new Date().toISOString(),
+        };
+        setUser(profile);
+        localStorage.setItem(DEMO_USER_KEY, JSON.stringify(profile));
       } else {
-        // Create basic profile or check if it's admin email
-        const isAdminEmail = email.includes('admin') || email === 'enith@las3yr.com' || email === 'yorle170203@gmail.com';
         const profile: Profile = {
           id: userId,
           email,
           full_name: email.split('@')[0],
-          role: isAdminEmail ? 'admin' : 'customer',
+          role: 'customer',
           created_at: new Date().toISOString(),
         };
         setUser(profile);
@@ -92,17 +100,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { error: error ? new Error(error.message) : null };
     }
 
-    // Demo / fallback auth
     if (pass.length < 4) {
       return { error: new Error('La contraseña debe tener al menos 4 caracteres.') };
     }
 
-    const isAdmin = email.toLowerCase().includes('admin') || email.toLowerCase().includes('enith') || email === 'yorle170203@gmail.com';
     const profile: Profile = {
       id: 'usr-' + Date.now(),
       email,
-      full_name: email.includes('enith') ? 'Enith (Propietaria)' : 'Administrador',
-      role: isAdmin ? 'admin' : 'customer',
+      full_name: email.split('@')[0],
+      role: 'customer',
       created_at: new Date().toISOString(),
     };
     setUser(profile);
@@ -140,19 +146,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(DEMO_USER_KEY);
   };
 
-  const loginAsDemoAdmin = () => {
-    const adminUser: Profile = {
-      id: 'admin-las3yr-demo',
-      email: 'enith@las3yr.com',
-      full_name: 'Enith — Propietaria Las 3YR',
-      role: 'admin',
-      created_at: new Date().toISOString(),
-    };
-    setUser(adminUser);
-    localStorage.setItem(DEMO_USER_KEY, JSON.stringify(adminUser));
+  const loginAdminWithCredentials = async (
+    email: string,
+    pass: string,
+    totpCode: string
+  ): Promise<{ error: Error | null }> => {
+    const { profile, error } = await adminAuthService.loginAdmin(email, pass, totpCode);
+    if (error || !profile) {
+      return { error: error || new Error('No se pudo verificar la cuenta de administrador.') };
+    }
+
+    setUser(profile);
+    localStorage.setItem(DEMO_USER_KEY, JSON.stringify(profile));
+    return { error: null };
   };
 
-  const role = user?.role || 'customer';
+  const role: UserRole = user?.role === 'admin' ? 'admin' : 'customer';
   const isAdmin = role === 'admin';
 
   return (
@@ -165,7 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signInWithEmail,
         signUpWithEmail,
         signOut,
-        loginAsDemoAdmin,
+        loginAdminWithCredentials,
       }}
     >
       {children}

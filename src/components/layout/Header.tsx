@@ -426,22 +426,6 @@ export const Header: React.FC = () => {
                     <User className="w-4 h-4 text-stone-500" />
                     <span>{user ? `Mi Cuenta (${user.full_name.split(' ')[0]})` : 'Iniciar Sesión'}</span>
                   </Link>
-
-                  {isAdmin && (
-                    <Link
-                      to="/admin"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center justify-between p-3 rounded-xl bg-[#EAF2ED] text-[#163E2B] text-xs font-bold transition border border-[#163E2B]/10 shadow-2xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-[#163E2B]" />
-                        <span>Panel Administrativo</span>
-                      </div>
-                      <span className="text-[9px] bg-[#163E2B] text-white px-2.5 py-0.5 rounded-full font-bold">
-                        ADMIN
-                      </span>
-                    </Link>
-                  )}
                 </div>
               </div>
 

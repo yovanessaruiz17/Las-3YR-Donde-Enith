@@ -8,7 +8,7 @@ import { Order } from '../types';
 
 export const AccountPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAdmin, signInWithEmail, signUpWithEmail, signOut, loginAsDemoAdmin } = useAuth();
+  const { user, isAdmin, signInWithEmail, signUpWithEmail, signOut } = useAuth();
   const { showToast } = useStore();
 
   const [isRegister, setIsRegister] = useState(false);
@@ -132,25 +132,13 @@ export const AccountPage: React.FC = () => {
               </button>
             </form>
 
-            <div className="mt-6 pt-6 border-t border-[#F0EAE1] text-center space-y-3">
+            <div className="mt-6 pt-6 border-t border-[#F0EAE1] text-center">
               <button
                 onClick={() => setIsRegister(!isRegister)}
-                className="text-xs text-[#D83173] font-semibold hover:underline"
+                className="text-xs text-[#D83173] font-semibold hover:underline cursor-pointer"
               >
                 {isRegister ? '¿Ya tienes cuenta? Inicia sesión aquí' : '¿No tienes cuenta? Regístrate aquí'}
               </button>
-
-              <div>
-                <button
-                  onClick={() => {
-                    loginAsDemoAdmin();
-                    navigate('/admin');
-                  }}
-                  className="text-[11px] text-[#163E2B] bg-[#E9F3EC] px-3 py-1.5 rounded-full font-bold hover:bg-[#163E2B] hover:text-white transition"
-                >
-                  Acceso Rápido Propietaria / Admin
-                </button>
-              </div>
             </div>
           </div>
         </div>

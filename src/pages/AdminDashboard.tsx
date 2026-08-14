@@ -22,20 +22,28 @@ import {
   DollarSign,
   AlertCircle,
   LogOut,
+  ShieldCheck,
+  QrCode,
+  KeyRound,
+  Copy,
+  Smartphone,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { storeService } from '../services/storeService';
+import { totpService } from '../services/totpService';
+import { Admin2FALogin } from '../components/admin/Admin2FALogin';
 import { Product, Order, Category, Brand, Banner, OrderStatus } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAdmin, loginAsDemoAdmin, signOut } = useAuth();
+  const { user, isAdmin, signOut } = useAuth();
   const { settings, updateSettings, categories, brands, banners, refreshStore, showToast } = useStore();
 
   const [activeTab, setActiveTab] = useState<
-    'kpis' | 'products' | 'orders' | 'categories' | 'banners' | 'settings' | 'messages' | 'database'
+    'kpis' | 'products' | 'orders' | 'categories' | 'banners' | 'settings' | 'messages' | 'database' | 'security'
   >('kpis');
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -53,8 +61,29 @@ export const AdminDashboard: React.FC = () => {
   // Modals / Editors
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState(false);
+
+  // 2FA Security Tab States
+  const [copiedSecret, setCopiedSecret] = useState(false);
+  const [liveCode, setLiveCode] = useState('------');
+  const [secondsRemaining, setSecondsRemaining] = useState(30);
+  const [testOtpInput, setTestOtpInput] = useState('');
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    const updateTicker = async () => {
+      try {
+        const code = await totpService.getCurrentCode();
+        setLiveCode(code);
+        setSecondsRemaining(totpService.getSecondsRemaining());
+      } catch (e) {
+        console.error('Error generating live TOTP:', e);
+      }
+    };
+
+    updateTicker();
+    const interval = setInterval(updateTicker, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const loadAllData = async () => {
     setLoading(true);
@@ -77,99 +106,8 @@ export const AdminDashboard: React.FC = () => {
     }
   }, [isAdmin]);
 
-  const handlePinSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Authorized PINs: 1702, 3yr2026, admin, or 1234
-    const validPins = ['1702', '3yr2026', 'admin', '1234', 'enith2026', 'yordev'];
-    if (validPins.includes(adminPin.trim().toLowerCase())) {
-      loginAsDemoAdmin();
-      setPinError(false);
-      showToast('Acceso autorizado como Administradora', 'success');
-    } else {
-      setPinError(true);
-      showToast('Código de acceso o PIN incorrecto', 'error');
-    }
-  };
-
   if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-[#FAF8F5] py-16 flex items-center justify-center">
-        <div className="max-w-md w-full mx-auto px-4">
-          <div className="bg-white rounded-3xl p-8 border border-[#EFE9E1] shadow-xl text-center space-y-5">
-            <div className="w-14 h-14 rounded-full bg-[#FAF6F0] text-[#163E2B] flex items-center justify-center mx-auto">
-              <Sliders className="w-7 h-7" />
-            </div>
-            <div>
-              <h1 className="font-serif text-2xl font-bold text-[#163E2B]">
-                Acceso Administrativo Privado
-              </h1>
-              <p className="text-xs text-stone-500 mt-1">
-                Área restringida únicamente para la propietaria y administración de Las 3YR.
-              </p>
-            </div>
-
-            <form onSubmit={handlePinSubmit} className="space-y-3 pt-2 text-left">
-              <div>
-                <label className="block text-xs font-bold text-[#163E2B] mb-1">
-                  Clave o PIN de Seguridad
-                </label>
-                <input
-                  type="password"
-                  value={adminPin}
-                  onChange={(e) => {
-                    setAdminPin(e.target.value);
-                    if (pinError) setPinError(false);
-                  }}
-                  placeholder="Introduce el PIN (ej: 1702 ó 3yr2026)"
-                  className={`w-full bg-[#FAF8F5] border rounded-xl text-sm py-2.5 px-3.5 outline-none transition ${
-                    pinError
-                      ? 'border-rose-500 ring-2 ring-rose-100'
-                      : 'border-[#E4DDD3] focus:border-[#163E2B]'
-                  }`}
-                  autoFocus
-                />
-                {pinError ? (
-                  <p className="text-[11px] text-rose-600 mt-1 font-medium">
-                    PIN incorrecto. Puedes usar <strong>1702</strong> o <strong>3yr2026</strong>.
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-stone-400 mt-1">
-                    PIN predeterminado de administración: <strong>1702</strong> o <strong>3yr2026</strong>
-                  </p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3.5 rounded-2xl bg-[#163E2B] hover:bg-[#102B1E] text-white font-bold text-xs tracking-wider uppercase shadow-md transition cursor-pointer"
-              >
-                Ingresar con PIN
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  loginAsDemoAdmin();
-                  showToast('¡Bienvenida, Doña Enith! Acceso concedido.', 'success');
-                }}
-                className="w-full py-2.5 rounded-2xl bg-[#FDF2F6] hover:bg-[#FCE4EC] text-[#D83173] font-bold text-xs tracking-wider uppercase transition cursor-pointer border border-[#D83173]/30 flex items-center justify-center gap-1.5"
-              >
-                <span>Acceso Rápido Propietaria (Enith)</span>
-              </button>
-            </form>
-
-            <div className="pt-2 border-t border-[#F0EAE1]">
-              <Link
-                to="/"
-                className="inline-block text-xs font-semibold text-stone-500 hover:text-[#163E2B]"
-              >
-                ← Volver a la Tienda Pública
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <Admin2FALogin />;
   }
 
   // KPIs
@@ -274,6 +212,7 @@ export const AdminDashboard: React.FC = () => {
             { id: 'settings', label: 'Configuración Tienda', icon: Settings },
             { id: 'messages', label: `Mensajes (${messages.length})`, icon: MessageSquare },
             { id: 'database', label: 'Supabase & Netlify', icon: Database },
+            { id: 'security', label: 'Seguridad 2FA', icon: ShieldCheck },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -1129,6 +1068,196 @@ git push origin main</pre>
                     ✓ El archivo <code className="font-mono">netlify.toml</code> y las reglas de redirección SPA ya están configurados en el proyecto.
                   </p>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 8: SEGURIDAD 2FA & AUTHENTICATOR */}
+        {activeTab === 'security' && (
+          <div className="space-y-6 max-w-4xl mx-auto">
+            {/* Main Security Card */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#EFE9E1] shadow-2xs space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E9F3EC] text-[#163E2B] text-xs font-bold uppercase tracking-wider mb-2">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#25D366]" />
+                    <span>Doble Factor de Autenticación Activo</span>
+                  </div>
+                  <h2 className="font-serif text-2xl font-bold text-[#163E2B]">
+                    Configuración de Seguridad 2FA
+                  </h2>
+                  <p className="text-xs text-stone-500 mt-1">
+                    El acceso al panel está protegido mediante código temporal dinámico (TOTP) sincronizado con tu aplicación Authenticator.
+                  </p>
+                </div>
+
+                {/* Status Badge */}
+                <div className="bg-[#E9F3EC] border border-[#B7D1C1] text-[#163E2B] p-4 rounded-2xl text-center shrink-0">
+                  <div className="flex items-center justify-center gap-2 font-bold text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Protección 2FA Activada</span>
+                  </div>
+                  <p className="text-[10px] text-stone-500 mt-1">
+                    Requiere correo + Authenticator
+                  </p>
+                </div>
+              </div>
+
+              {/* Current Authenticator Code & QR Code */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-[#F0EAE1]">
+                {/* Left: QR Code & Setup */}
+                <div className="bg-[#FAF8F5] p-5 rounded-2xl border border-[#F0EAE1] space-y-4">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="w-4 h-4 text-[#D83173]" />
+                    <h3 className="font-serif font-bold text-[#163E2B] text-sm">
+                      Código QR para Vincular Nuevos Dispositivos
+                    </h3>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <div className="p-3 bg-white rounded-xl shadow-xs border border-stone-200 shrink-0">
+                      <QRCodeSVG
+                        value={totpService.getOtpAuthUri(user?.email || 'enith@las3yr.com')}
+                        size={130}
+                        level="M"
+                        includeMargin={false}
+                      />
+                    </div>
+                    <div className="space-y-2 text-xs text-stone-600 text-left">
+                      <p className="text-[11px] leading-relaxed">
+                        Escanea este código con <strong>Google Authenticator</strong> o <strong>Microsoft Authenticator</strong> en tu celular.
+                      </p>
+                      <div>
+                        <span className="text-[10px] text-stone-400 block mb-0.5">Clave Secreta Manual:</span>
+                        <div className="flex items-center gap-1.5">
+                          <code className="text-[10px] font-mono font-bold bg-white px-2 py-1 rounded-lg border border-stone-200 text-[#163E2B] select-all max-w-[130px] truncate">
+                            {totpService.getSecret()}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(totpService.getSecret());
+                              setCopiedSecret(true);
+                              showToast('Clave copiada al portapapeles', 'success');
+                              setTimeout(() => setCopiedSecret(false), 3000);
+                            }}
+                            className="p-1 text-stone-500 hover:text-[#163E2B] hover:bg-white rounded-md border border-stone-200 transition text-[10px] flex items-center gap-1 cursor-pointer"
+                          >
+                            {copiedSecret ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedSecret ? 'Copiada' : 'Copiar'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Live Rolling PIN & Test */}
+                <div className="bg-[#FAF8F5] p-5 rounded-2xl border border-[#F0EAE1] space-y-4 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-[#163E2B]" />
+                        <h3 className="font-serif font-bold text-[#163E2B] text-sm">
+                          Código Actual en Vivo
+                        </h3>
+                      </div>
+                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
+                        {secondsRemaining}s restantes
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-stone-200 text-center space-y-1">
+                      <span className="text-[10px] text-stone-400 uppercase tracking-widest block font-bold">
+                        PIN Generado por el Servidor
+                      </span>
+                      <span className="font-mono font-black text-3xl text-[#163E2B] tracking-[0.3em] block">
+                        {liveCode}
+                      </span>
+                      {/* Progress bar */}
+                      <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden mt-2">
+                        <div
+                          className="bg-[#25D366] h-full transition-all duration-1000 ease-linear"
+                          style={{ width: `${(secondsRemaining / 30) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Verification Quick Test */}
+                  <div className="space-y-2 pt-2 border-t border-[#F0EAE1]">
+                    <label className="block text-[11px] font-bold text-[#163E2B]">
+                      Probar código de tu celular:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={testOtpInput}
+                        onChange={(e) => setTestOtpInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="ej: 123456"
+                        className="bg-white border border-[#E4DDD3] rounded-xl text-xs py-2 px-3 font-mono font-bold tracking-widest text-center outline-none flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const valid = await totpService.verifyCode(testOtpInput);
+                          if (valid) {
+                            setTestResult({ success: true, message: '¡Código válido! Tu app está perfectamente sincronizada.' });
+                            showToast('¡Código válido y sincronizado!', 'success');
+                          } else {
+                            setTestResult({ success: false, message: 'Código incorrecto o expirado. Revisa la hora de tu teléfono.' });
+                            showToast('Código no coincide', 'error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-[#163E2B] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#0F2B1E] transition cursor-pointer"
+                      >
+                        Validar
+                      </button>
+                    </div>
+
+                    {testResult && (
+                      <p className={`text-[11px] font-medium mt-1 ${testResult.success ? 'text-emerald-700' : 'text-rose-600'}`}>
+                        {testResult.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Admin Access Details & Info */}
+              <div className="bg-[#FAF6F0] p-5 rounded-2xl border border-[#EBE1D5] space-y-3 text-xs text-[#163E2B]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-sm">
+                    <Database className="w-4 h-4 text-[#163E2B]" />
+                    <span>Control de Roles en Base de Datos (Supabase)</span>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase tracking-wider">
+                    Rol: {user?.role || 'admin'}
+                  </span>
+                </div>
+
+                <p className="text-stone-600 text-[11px] leading-relaxed">
+                  Las credenciales no están fijas en el código fuente. El sistema valida el correo, la contraseña y comprueba en la tabla <code className="bg-white px-1.5 py-0.5 rounded font-mono text-[10px] border border-stone-200">profiles</code> de Supabase que el usuario tenga el campo <code className="bg-white px-1.5 py-0.5 rounded font-mono text-[10px] border border-stone-200">role = 'admin'</code>.
+                </p>
+
+                <div className="bg-white p-3 rounded-xl border border-[#E4DDD3] space-y-1.5">
+                  <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">
+                    Comando SQL para otorgar rol de administrador en Supabase:
+                  </span>
+                  <pre className="bg-[#FAF8F5] p-2 rounded-lg font-mono text-[11px] text-[#163E2B] overflow-x-auto border border-stone-200 select-all">
+UPDATE profiles SET role = 'admin' WHERE email = '{user?.email || 'enith@las3yr.com'}';</pre>
+                </div>
+
+                <ul className="space-y-1.5 text-stone-600 text-[11px] list-disc list-inside pt-1">
+                  <li>
+                    <strong>Ubicación del Acceso:</strong> El enlace al panel se encuentra únicamente en el pie de página (Footer) bajo el texto <em>"Acceso Panel"</em>.
+                  </li>
+                  <li>
+                    <strong>Triple Capa de Seguridad:</strong> Correo Electrónico + Contraseña en Base de Datos + Validación de Rol Admin + Código Dinámico 2FA.
+                  </li>
+                </ul>
               </div>
             </div>
           </div>

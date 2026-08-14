@@ -219,6 +219,15 @@ export const Footer: React.FC = () => {
             <Link to="/cambios-y-devoluciones" className="hover:text-white transition">
               Garantías
             </Link>
+            <span>•</span>
+            <Link
+              to="/admin"
+              className="text-[#B7D1C1] hover:text-[#F48FB1] transition flex items-center gap-1 font-medium group"
+              title="Acceso de administración privada con doble factor 2FA"
+            >
+              <ShieldCheck className="w-3 h-3 text-[#F48FB1] group-hover:scale-110 transition-transform" />
+              <span>Acceso Panel</span>
+            </Link>
           </div>
         </div>
       </div>

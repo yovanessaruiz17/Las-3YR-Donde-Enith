@@ -73,11 +73,27 @@ Antes de presionar "Deploy", haz clic en **"Add environment variables"** (o ve a
 
 ---
 
-## 📌 PARTE 4: Verificación y Soporte Local
+## 📌 PARTE 4: Configuración de Administradores (Rol de Seguridad)
+
+Para que un usuario pueda acceder al Panel de Administración con su correo y contraseña:
+
+1. El usuario debe registrarse normalmente con su correo y contraseña en la tienda o desde el panel de Supabase (**Authentication -> Users**).
+2. En el **SQL Editor** de Supabase, ejecuta el siguiente comando para asignarle permisos administrativos:
+   ```sql
+   UPDATE profiles 
+   SET role = 'admin' 
+   WHERE email = 'tu_correo@gmail.com';
+   ```
+3. Ahora este usuario podrá acceder al panel con su **correo**, su **contraseña de base de datos** y el **código dinámico de 6 dígitos de Google Authenticator**.
+
+---
+
+## 📌 PARTE 5: Verificación y Soporte Local
 
 - Si pruebas en local, puedes crear un archivo `.env` con las mismas variables:
   ```env
   VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
   VITE_SUPABASE_ANON_KEY=tu-anon-key-aqui
   ```
-- Si las variables no están configuradas, el sistema activa automáticamente el **modo local de contingencia (`localStorage`)**, asegurando que la tienda nunca se caiga.
+- Si las variables no están configuradas, el sistema activa automáticamente el **modo local de contingencia (`localStorage`)** con contraseñas cifradas vía SHA-256, asegurando que la tienda nunca se caiga y que ninguna credencial esté expuesta en el código fuente.
+
