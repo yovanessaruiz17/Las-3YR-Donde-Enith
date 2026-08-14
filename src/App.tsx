@@ -16,6 +16,7 @@ import { Footer } from './components/layout/Footer';
 import { CartDrawer } from './components/cart/CartDrawer';
 import { FloatingWhatsApp } from './components/layout/FloatingWhatsApp';
 import { ScrollToTop } from './components/common/ScrollToTop';
+import { PWAInstallPrompt } from './components/common/PWAInstallPrompt';
 
 import { Home } from './pages/Home';
 import { Products } from './pages/Products';
@@ -79,6 +80,9 @@ export default function App() {
 
                 {/* WhatsApp Floating Contact Button */}
                 <FloatingWhatsApp />
+
+                {/* Progressive Web App Install Banner / Prompt */}
+                <PWAInstallPrompt />
 
                 {/* Site Footer matching screenshot */}
                 <Footer />

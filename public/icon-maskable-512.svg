@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGradM512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A4A33" />
+      <stop offset="50%" stop-color="#163E2B" />
+      <stop offset="100%" stop-color="#0E281C" />
+    </linearGradient>
+    <linearGradient id="accentGradM512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F48FB1" />
+      <stop offset="50%" stop-color="#D83173" />
+      <stop offset="100%" stop-color="#AD1457" />
+    </linearGradient>
+    <linearGradient id="goldGradM512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE082" />
+      <stop offset="100%" stop-color="#FFB300" />
+    </linearGradient>
+  </defs>
+
+  <!-- Full bleed background for maskable (Android circles / squircle masks) -->
+  <rect width="512" height="512" fill="url(#bgGradM512)" />
+
+  <!-- Inner safe zone decorative element -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="rgba(244, 143, 177, 0.2)" stroke-width="2" stroke-dasharray="6 6" />
+
+  <!-- Sparkle inside safe zone -->
+  <path d="M360 140 Q360 160 380 160 Q360 160 360 180 Q360 160 340 160 Q360 160 360 140 Z" fill="url(#goldGradM512)" />
+
+  <!-- Text inside 80% safe zone -->
+  <text x="256" y="210" font-family="'Playfair Display', Georgia, serif" font-size="52" font-weight="700" fill="#FBF8F5" text-anchor="middle">
+    Las
+  </text>
+  <text x="256" y="285" font-family="'Playfair Display', Georgia, serif" font-size="82" font-weight="800" fill="url(#accentGradM512)" text-anchor="middle">
+    3YR
+  </text>
+
+  <line x1="165" y1="322" x2="347" y2="322" stroke="url(#accentGradM512)" stroke-width="2" stroke-linecap="round" />
+  <circle cx="256" cy="322" r="4" fill="#FFE082" />
+
+  <text x="256" y="358" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="19" font-weight="700" fill="#F48FB1" text-anchor="middle" letter-spacing="6">
+    DONDE ENITH
+  </text>
+</svg>

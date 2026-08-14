@@ -17,6 +17,7 @@ import { useFavorites } from '../../context/FavoritesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
 import { AnnouncementBar } from './AnnouncementBar';
+import { InstallAppButton } from '../common/PWAInstallPrompt';
 
 export const Header: React.FC = () => {
   const navigate = useNavigate();
@@ -342,6 +343,15 @@ export const Header: React.FC = () => {
               >
                 MI CUENTA
               </Link>
+
+              {/* Install PWA Button inside mobile menu */}
+              <div className="pt-3 pb-1 border-t border-[#F0EAE1]">
+                <InstallAppButton
+                  label="Instalar App en tu Celular"
+                  variant="primary"
+                  className="w-full justify-center py-2.5"
+                />
+              </div>
             </nav>
           </div>
         </div>

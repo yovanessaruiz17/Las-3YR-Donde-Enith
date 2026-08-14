@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A4A33" />
+      <stop offset="50%" stop-color="#163E2B" />
+      <stop offset="100%" stop-color="#0E281C" />
+    </linearGradient>
+    <linearGradient id="accentGrad192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F48FB1" />
+      <stop offset="50%" stop-color="#D83173" />
+      <stop offset="100%" stop-color="#AD1457" />
+    </linearGradient>
+    <linearGradient id="goldGrad192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE082" />
+      <stop offset="100%" stop-color="#FFB300" />
+    </linearGradient>
+  </defs>
+
+  <rect width="192" height="192" rx="42" fill="url(#bgGrad192)" />
+  <rect x="6" y="6" width="180" height="180" rx="36" fill="none" stroke="rgba(244, 143, 177, 0.3)" stroke-width="1.5" />
+
+  <!-- Sparkle -->
+  <path d="M150 32 Q150 44 162 44 Q150 44 150 56 Q150 44 138 44 Q150 44 150 32 Z" fill="url(#goldGrad192)" />
+
+  <!-- Main Monogram -->
+  <text x="96" y="74" font-family="'Playfair Display', Georgia, serif" font-size="22" font-weight="700" fill="#FBF8F5" text-anchor="middle">
+    Las
+  </text>
+  <text x="96" y="112" font-family="'Playfair Display', Georgia, serif" font-size="38" font-weight="800" fill="url(#accentGrad192)" text-anchor="middle">
+    3YR
+  </text>
+
+  <!-- Divider -->
+  <line x1="50" y1="126" x2="142" y2="126" stroke="url(#accentGrad192)" stroke-width="1.5" stroke-linecap="round" />
+
+  <!-- Subtitle -->
+  <text x="96" y="144" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="8.5" font-weight="700" fill="#F48FB1" text-anchor="middle" letter-spacing="3">
+    DONDE ENITH
+  </text>
+  <text x="96" y="166" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="6.5" font-weight="600" fill="#C8E6C9" text-anchor="middle" letter-spacing="1.5" opacity="0.9">
+    CARTAGENA
+  </text>
+</svg>

@@ -42,6 +42,11 @@ La plataforma comercializa y despacha sus productos **exclusivamente en la ciuda
   - Visualización de mensajes de contacto y suscriptores al boletín.
   - Asistente de sincronización y diagnóstico en vivo con base de datos **Supabase**.
 
+- **📲 Progressive Web App (PWA) Instalable en Celular:**
+  - **Instalación Directa:** Descargable en Android (Chrome/Edge) e iOS (Safari) como aplicación nativa con ícono en pantalla de inicio.
+  - **Uso sin Conexión / Caching:** Service Worker integrado con caché de navegación y modo fuera de línea para consultar el catálogo y teléfonos de atención.
+  - **Banner y Guía Intuitiva:** Prompt inteligente de instalación nativa con tutorial interactivo para iPhone/iPad.
+
 - **🔍 SEO & GEO (Generative Engine Optimization):**
   - Schema.org JSON-LD para `OnlineStore`, `FAQPage` y `WebSite`.
   - Meta tags geográficos orientados a Cartagena de Indias (`CO-BOL`).
@@ -52,6 +57,7 @@ La plataforma comercializa y despacha sus productos **exclusivamente en la ciuda
 ## 🚀 Tecnologías Utilizadas
 
 - **Frontend:** React 18, TypeScript, Vite, Tailwind CSS
+- **PWA & Offline:** Service Worker, Web App Manifest (`manifest.json`), Maskable Icons
 - **Iconografía & Animaciones:** Lucide React, Motion (`motion/react`)
 - **Enrutamiento:** React Router DOM v6
 - **Base de Datos & Backend:** Supabase (PostgreSQL, Row Level Security, Storage Buckets) con fallback a LocalStorage

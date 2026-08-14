@@ -9,8 +9,10 @@ import {
   MapPin,
   Sparkles,
   ShieldCheck,
+  Smartphone,
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
+import { InstallAppButton } from '../common/PWAInstallPrompt';
 
 export const Footer: React.FC = () => {
   const { settings } = useStore();
@@ -70,6 +72,14 @@ export const Footer: React.FC = () => {
               >
                 <MessageCircle className="w-4 h-4" />
               </a>
+            </div>
+
+            {/* PWA Mobile App Download Button */}
+            <div className="pt-2">
+              <InstallAppButton
+                label="Instalar App en el Celular"
+                className="bg-[#F48FB1]/10 text-[#F48FB1] border border-[#F48FB1]/30 hover:bg-[#F48FB1]/20 hover:text-white"
+              />
             </div>
           </div>
 

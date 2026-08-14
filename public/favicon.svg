@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+  <defs>
+    <linearGradient id="favBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A4A33" />
+      <stop offset="100%" stop-color="#0E281C" />
+    </linearGradient>
+    <linearGradient id="favAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F48FB1" />
+      <stop offset="100%" stop-color="#D83173" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#favBg)" />
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="#F48FB1" stroke-opacity="0.3" stroke-width="1" />
+  <text x="32" y="41" font-family="'Playfair Display', Georgia, serif" font-size="26" font-weight="800" fill="url(#favAccent)" text-anchor="middle">
+    3YR
+  </text>
+</svg>
