@@ -1,0 +1,6 @@
+{
+  "name": "Las 3YR - Donde Enith",
+  "description": "Tienda online oficial y catálogo boutique de belleza, perfumería, hogar y cuidado personal con marcas líderes como Natura, Avon, Yanbal, Leonisa, Ésika y Azzorti.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

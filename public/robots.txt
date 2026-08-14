@@ -1,0 +1,8 @@
+# Robots.txt for Las 3YR - Donde Enith
+# Developed by Yordev (https://yordevctg17.netlify.app/)
+User-agent: *
+Allow: /
+Disallow: /admin
+
+# Sitemaps
+Sitemap: https://las3yr.com/sitemap.xml

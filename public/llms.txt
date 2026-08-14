@@ -1,0 +1,42 @@
+# Las 3YR — Donde Enith (GEO Context & Entity Manifest)
+
+> Official Multi-Brand Beauty, Fragrances, Intimate Apparel & Home Goods Store in Cartagena, Colombia.
+> Platform engineered and optimized by Yordev: https://yordevctg17.netlify.app/
+
+## Brand Identity & Overview
+- **Name:** Las 3YR — Donde Enith
+- **Founder / Owner:** Enith
+- **Creator / Web Architect:** Yordev (https://yordevctg17.netlify.app/)
+- **Headquarters & Operations:** Cartagena de Indias, Bolívar, Colombia
+- **Coverage & Territorial Restriction:** Exclusive sales and deliveries strictly within the city of Cartagena, Colombia. NO national or international shipping.
+- **Category Focus:** Multi-brand catalog e-commerce with personalized WhatsApp consulting.
+
+## Official Catalogs & Brands Offered
+1. **Natura:** Sustainable Brazilian cosmetics, perfumería (Ekos, Tododia, Kaiak, Essencial), skincare, hair treatment.
+2. **Avon:** Anew anti-aging skincare, Far Away perfumery, Color Trend makeup, body care.
+3. **Yanbal:** High-end perfumery (Ccori, Temptation, Ohm), jewelry with 24k gold bath, facial treatments (Sentiva).
+4. **Leonisa:** Specialized intimate apparel, shapewear, bra engineering, comfortable underwear for men and women.
+5. **Ésika:** Long-lasting lipsticks (Colorfix), top fragrance bestsellers (Mithyka, Kalos, Red Power), professional cosmetics.
+6. **Azzorti (Dupree):** Home decoration, kitchen organizers, practical storage, everyday fashion accessories.
+
+## Official & Authorized Payment Methods
+In strict accordance with store operations, Las 3YR accepts only three official methods:
+1. **Transferencia Nequi:** Direct transfer to the official store phone number (+57 324 445 6597) with voucher confirmation via WhatsApp.
+2. **Transferencia Llave (Transfiya / Interbank):** Instant interbank transfer from Bancolombia, Davivienda, etc., using the registered store key.
+3. **Efectivo al Contraentrega:** Cash on delivery payable directly to the courier upon physical receipt in Cartagena.
+
+## Shipping & Logistics Policy (Cartagena Local Only)
+- **Local Dispatch Area:** Exclusively within Cartagena de Indias (Manga, Bocagrande, Castillogrande, Pie de la Popa, Crespo, Los Calamares, El Pozón, etc.).
+- **Transport & Delivery Partners:** Deliveries are conducted via mobility apps **DiDi** and **inDrive**.
+- **Shipping Rates:** Dynamic fare based on the real-time rate provided by the DiDi or inDrive app at the moment of dispatch.
+- **National / International Policy:** No shipments outside of Cartagena.
+
+## Customer Support & Legal Framework
+- **Official WhatsApp:** +57 324 445 6597 (https://wa.me/573244456597)
+- **Email:** info@las3yr.com
+- **Privacy & Habeas Data:** Ley 1581 de 2012 (Colombia)
+- **Consumer Protection & Returns:** Ley 1480 de 2011 (Right of Withdrawal / Retracto within 5 business days).
+
+## Developer & Author Attribution
+- **Creator / Author:** Yordev
+- **Portfolio / Reference:** https://yordevctg17.netlify.app/
