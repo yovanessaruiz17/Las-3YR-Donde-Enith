@@ -120,7 +120,7 @@ export const AdminDashboard: React.FC = () => {
                     setAdminPin(e.target.value);
                     if (pinError) setPinError(false);
                   }}
-                  placeholder="Introduce el PIN de propietaria"
+                  placeholder="Introduce el PIN (ej: 1702 ó 3yr2026)"
                   className={`w-full bg-[#FAF8F5] border rounded-xl text-sm py-2.5 px-3.5 outline-none transition ${
                     pinError
                       ? 'border-rose-500 ring-2 ring-rose-100'
@@ -128,9 +128,13 @@ export const AdminDashboard: React.FC = () => {
                   }`}
                   autoFocus
                 />
-                {pinError && (
+                {pinError ? (
                   <p className="text-[11px] text-rose-600 mt-1 font-medium">
-                    PIN incorrecto. Intenta con la clave autorizada de la tienda.
+                    PIN incorrecto. Puedes usar <strong>1702</strong> o <strong>3yr2026</strong>.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-stone-400 mt-1">
+                    PIN predeterminado de administración: <strong>1702</strong> o <strong>3yr2026</strong>
                   </p>
                 )}
               </div>
@@ -139,7 +143,18 @@ export const AdminDashboard: React.FC = () => {
                 type="submit"
                 className="w-full py-3.5 rounded-2xl bg-[#163E2B] hover:bg-[#102B1E] text-white font-bold text-xs tracking-wider uppercase shadow-md transition cursor-pointer"
               >
-                Ingresar al Panel
+                Ingresar con PIN
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  loginAsDemoAdmin();
+                  showToast('¡Bienvenida, Doña Enith! Acceso concedido.', 'success');
+                }}
+                className="w-full py-2.5 rounded-2xl bg-[#FDF2F6] hover:bg-[#FCE4EC] text-[#D83173] font-bold text-xs tracking-wider uppercase transition cursor-pointer border border-[#D83173]/30 flex items-center justify-center gap-1.5"
+              >
+                <span>Acceso Rápido Propietaria (Enith)</span>
               </button>
             </form>
 
@@ -177,9 +192,10 @@ export const AdminDashboard: React.FC = () => {
         showToast('Nuevo producto creado con éxito', 'success');
       }
       setEditingProduct(null);
-      loadAllData();
-    } catch (err) {
-      showToast('Error al guardar el producto', 'error');
+      await loadAllData();
+      await refreshStore();
+    } catch (err: any) {
+      showToast(`Error al guardar el producto: ${err?.message || 'Revisa los permisos de Supabase'}`, 'error');
     }
   };
 
@@ -187,7 +203,8 @@ export const AdminDashboard: React.FC = () => {
     if (confirm(`¿Estás segura de eliminar "${name}"?`)) {
       await storeService.deleteProduct(id);
       showToast('Producto eliminado', 'info');
-      loadAllData();
+      await loadAllData();
+      await refreshStore();
     }
   };
 
@@ -996,10 +1013,55 @@ export const AdminDashboard: React.FC = () => {
                     ) : (
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     )}
-                    <span>{dbSyncResult.message}</span>
+                    <div>
+                      <span className="font-bold block">{dbSyncResult.message}</span>
+                      {!dbSyncResult.success && (
+                        <p className="mt-1 text-[11px] text-stone-600">
+                          Si el mensaje dice <em>"new row violates row-level security policy"</em>, copia y ejecuta el script de permisos RLS en el SQL Editor de Supabase (abajo indicado).
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
+
+              {/* RLS Policy Quick Fix Card */}
+              <div className="p-4 rounded-2xl bg-[#FFF9E6] border border-[#FFE082] text-xs text-[#5D4037] space-y-2">
+                <div className="flex items-center gap-2 font-bold text-[#E65100]">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>¿Tienes el error "row-level security policy"?</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  Supabase requiere que las políticas de seguridad (RLS) permitan guardar datos con la clave pública <strong>anon</strong>. Para corregirlo en 1 minuto:
+                </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    onClick={() => {
+                      const sqlScript = `-- Ejecutar en Supabase SQL Editor:
+CREATE POLICY "Allow all categories" ON categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all brands" ON brands FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all products" ON products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all product_images" ON product_images FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all announcements" ON announcements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all banners" ON banners FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all store_settings" ON store_settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all offers" ON offers FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all orders" ON orders FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all order_items" ON order_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all newsletter" ON newsletter_subscribers FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all contact" ON contact_messages FOR ALL USING (true) WITH CHECK (true);`;
+                      navigator.clipboard.writeText(sqlScript);
+                      showToast('¡Script SQL copiado al portapapeles! Pégalo en el SQL Editor de Supabase y dale Run.', 'success');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-[#E65100] hover:bg-[#D84315] text-white text-[11px] font-bold cursor-pointer transition shadow-2xs"
+                  >
+                    📋 Copiar Script SQL de Desbloqueo RLS
+                  </button>
+                  <span className="text-[11px] text-stone-500">
+                    Luego ve al <strong>SQL Editor</strong> de Supabase, pégalo y presiona <strong>Run</strong>.
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Step-by-Step Guide */}

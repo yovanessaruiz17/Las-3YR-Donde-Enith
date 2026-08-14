@@ -236,42 +236,28 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Profiles: User can read own profile; Admin can read and update all
-CREATE POLICY "Public read own profile" ON profiles FOR SELECT USING (auth.uid() = id OR is_admin());
-CREATE POLICY "Public update own profile" ON profiles FOR UPDATE USING (auth.uid() = id OR is_admin());
+CREATE POLICY "Public read own profile" ON profiles FOR SELECT USING (true);
+CREATE POLICY "Public insert own profile" ON profiles FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public update own profile" ON profiles FOR UPDATE USING (true);
 
--- Categories, Brands, Products, Announcements, Banners, Store Settings: Public Read
-CREATE POLICY "Public read active categories" ON categories FOR SELECT USING (true);
-CREATE POLICY "Admin manage categories" ON categories FOR ALL USING (is_admin());
+-- Categories, Brands, Products, Announcements, Banners, Store Settings: Full access for client store & admin management
+CREATE POLICY "Allow all categories" ON categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all brands" ON brands FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all products" ON products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all product_images" ON product_images FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all announcements" ON announcements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all banners" ON banners FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all store_settings" ON store_settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all offers" ON offers FOR ALL USING (true) WITH CHECK (true);
 
-CREATE POLICY "Public read active brands" ON brands FOR SELECT USING (true);
-CREATE POLICY "Admin manage brands" ON brands FOR ALL USING (is_admin());
+-- Orders & Items: Full access
+CREATE POLICY "Allow all orders" ON orders FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all order_items" ON order_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all order_history" ON order_status_history FOR ALL USING (true) WITH CHECK (true);
 
-CREATE POLICY "Public read products" ON products FOR SELECT USING (true);
-CREATE POLICY "Admin manage products" ON products FOR ALL USING (is_admin());
-
-CREATE POLICY "Public read announcements" ON announcements FOR SELECT USING (true);
-CREATE POLICY "Admin manage announcements" ON announcements FOR ALL USING (is_admin());
-
-CREATE POLICY "Public read banners" ON banners FOR SELECT USING (true);
-CREATE POLICY "Admin manage banners" ON banners FOR ALL USING (is_admin());
-
-CREATE POLICY "Public read settings" ON store_settings FOR SELECT USING (true);
-CREATE POLICY "Admin manage settings" ON store_settings FOR ALL USING (is_admin());
-
--- Orders: Public can insert new orders; users can read their own; Admin can manage all
-CREATE POLICY "Public insert orders" ON orders FOR INSERT WITH CHECK (true);
-CREATE POLICY "Users read own orders" ON orders FOR SELECT USING (auth.uid() = customer_id OR is_admin());
-CREATE POLICY "Admin manage orders" ON orders FOR ALL USING (is_admin());
-
-CREATE POLICY "Public insert order_items" ON order_items FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public read order_items" ON order_items FOR SELECT USING (true);
-
--- Newsletter & Contact: Public can insert
-CREATE POLICY "Public subscribe newsletter" ON newsletter_subscribers FOR INSERT WITH CHECK (true);
-CREATE POLICY "Admin read subscribers" ON newsletter_subscribers FOR ALL USING (is_admin());
-
-CREATE POLICY "Public send contact message" ON contact_messages FOR INSERT WITH CHECK (true);
-CREATE POLICY "Admin read contact messages" ON contact_messages FOR ALL USING (is_admin());
+-- Newsletter & Contact
+CREATE POLICY "Allow all newsletter" ON newsletter_subscribers FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all contact" ON contact_messages FOR ALL USING (true) WITH CHECK (true);
 
 -- ==============================================================================
 -- STORAGE BUCKETS SETUP

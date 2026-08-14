@@ -49,18 +49,17 @@ export const CartDrawer: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
       {/* Backdrop */}
       <div
         onClick={closeCart}
-        className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity animate-fade-in"
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-fade-in"
       />
 
       {/* Drawer Panel */}
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between overflow-hidden">
-          {/* Header section matching screenshot */}
-          <div className="p-5 border-b border-[#F0EAE1] bg-[#FAF8F5]">
+      <div className="relative w-full max-w-md h-full h-[100dvh] max-h-[100dvh] bg-white shadow-2xl flex flex-col z-10 animate-in slide-in-from-right duration-250">
+        {/* Header section matching screenshot */}
+        <div className="p-5 border-b border-[#F0EAE1] bg-[#FAF8F5] shrink-0">
             <div className="flex items-center justify-between mb-4">
               {/* Green Title Pill Badge matching screenshot */}
               <div className="mx-auto bg-[#163E2B] text-white px-6 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wider uppercase shadow-xs">
@@ -183,7 +182,7 @@ export const CartDrawer: React.FC = () => {
 
           {/* Footer Totals and Actions matching screenshot */}
           {cart.length > 0 && (
-            <div className="p-5 bg-[#FAF8F5] border-t border-[#F0EAE1] space-y-3">
+            <div className="p-5 bg-[#FAF8F5] border-t border-[#F0EAE1] space-y-3 shrink-0">
               <div className="space-y-1.5 text-xs sm:text-sm">
                 <div className="flex justify-between text-stone-600">
                   <span>Subtotal ({itemCount} productos)</span>
@@ -230,6 +229,5 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };

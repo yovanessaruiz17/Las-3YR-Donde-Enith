@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
@@ -11,6 +12,13 @@ import {
   Heart,
   ShieldAlert,
   Flame,
+  MessageCircle,
+  Home,
+  Grid,
+  Tag,
+  Phone,
+  ShieldCheck,
+  MapPin,
 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
@@ -31,6 +39,18 @@ export const Header: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const categoryMenuRef = useRef<HTMLDivElement>(null);
+
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isMobileMenuOpen]);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -57,8 +77,11 @@ export const Header: React.FC = () => {
     if (searchTerm.trim()) {
       navigate(`/productos?search=${encodeURIComponent(searchTerm.trim())}`);
       setSearchTerm('');
+      setIsMobileMenuOpen(false);
     }
   };
+
+  const handleSearch = handleSearchSubmit;
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-[0_2px_15px_rgba(0,0,0,0.03)] border-b border-[#F0EAE1]">
@@ -261,101 +284,189 @@ export const Header: React.FC = () => {
         </nav>
       </div>
 
-      {/* Mobile Drawer Menu */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 top-[110px] bg-black/40 z-50 backdrop-blur-xs">
-          <div className="bg-white w-4/5 max-w-sm h-full shadow-2xl p-6 flex flex-col gap-4 overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EAE1]">
-              <span className="font-serif text-lg font-bold text-[#163E2B]">Navegación</span>
-              <button
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="p-1.5 text-[#64786A] hover:text-[#183B2B] rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Mobile Navigation Drawer - Full Height Top-to-Bottom */}
+      {isMobileMenuOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-50 overflow-hidden flex justify-end" id="mobile-nav-drawer-root">
+            {/* Backdrop */}
+            <div
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-fade-in"
+            />
 
-            <nav className="flex flex-col gap-3 text-sm font-semibold text-[#22392A]">
-              <Link
-                to="/"
-                className="py-2 px-3 rounded-lg hover:bg-[#FAF6F1] hover:text-[#D83173] transition"
-              >
-                INICIO
-              </Link>
-              <Link
-                to="/productos"
-                className="py-2 px-3 rounded-lg hover:bg-[#FAF6F1] hover:text-[#D83173] transition"
-              >
-                TODOS LOS PRODUCTOS
-              </Link>
-              <Link
-                to="/ofertas"
-                className="py-2 px-3 rounded-lg text-[#C52B66] hover:bg-[#FDF2F6] transition flex items-center justify-between"
-              >
-                <span>OFERTAS DESTACADAS</span>
-                <Flame className="w-4 h-4" />
-              </Link>
+            {/* Drawer Panel - 100% Top to Bottom */}
+            <div className="relative w-full max-w-md h-full h-[100dvh] max-h-[100dvh] bg-white shadow-2xl flex flex-col z-10 animate-in slide-in-from-right duration-250">
+              {/* Header section - fixed top */}
+              <div className="p-5 border-b border-[#F0EAE1] bg-[#FAF8F5] shrink-0 relative">
+                <div className="flex items-center justify-between mb-4">
+                  {/* Green Title Pill Badge */}
+                  <div className="mx-auto bg-[#163E2B] text-white px-6 py-1.5 rounded-full text-xs sm:text-sm font-bold tracking-wider uppercase shadow-xs">
+                    MENÚ DE NAVEGACIÓN
+                  </div>
+                  <button
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="absolute right-4 top-4 p-2 text-stone-500 hover:text-[#163E2B] hover:bg-stone-200/60 rounded-full transition cursor-pointer"
+                    aria-label="Cerrar menú"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
 
-              <div className="pt-2 pb-1 border-t border-[#F0EAE1]">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8D9B91] px-3">
-                  Categorías
-                </span>
-                <div className="mt-2 flex flex-col gap-1">
-                  {categories.map((cat) => (
+                {/* Local Cartagena Delivery Notice */}
+                <div className="bg-[#FAF6F0] border border-[#EBE1D5] rounded-xl px-3 py-2 text-[11px] text-stone-600 flex items-center justify-between mb-2">
+                  <span className="font-semibold text-[#163E2B]">📍 Las 3YR • Donde Enith</span>
+                  <span className="text-[10px] text-[#D83173] font-bold uppercase">Solo Cartagena</span>
+                </div>
+
+                {/* Search Bar inside Drawer */}
+                <form onSubmit={handleSearchSubmit} className="relative mt-2">
+                  <input
+                    type="text"
+                    placeholder="¿Qué producto buscas hoy? (ej: Perfume, Crema...)"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-white border border-[#E8E1D7] text-[#163E2B] placeholder:text-stone-400 text-xs rounded-xl pl-9 pr-3 py-2.5 focus:outline-none focus:border-[#D83173] focus:ring-2 focus:ring-[#D83173]/10 transition shadow-2xs"
+                  />
+                  <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                </form>
+              </div>
+
+              {/* Scrollable Body - Expands to fill available vertical space */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain">
+                {/* Main Navigation Links */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <Link
+                    to="/"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-2.5 p-3.5 bg-[#FAF8F5] rounded-xl border border-[#F0EAE1] hover:bg-white hover:border-[#D83173]/30 transition shadow-2xs"
+                  >
+                    <Home className="w-4 h-4 text-[#163E2B]" />
+                    <span className="text-xs font-bold text-[#163E2B]">INICIO</span>
+                  </Link>
+
+                  <Link
+                    to="/productos"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-2.5 p-3.5 bg-[#FAF8F5] rounded-xl border border-[#F0EAE1] hover:bg-white hover:border-[#D83173]/30 transition shadow-2xs"
+                  >
+                    <Grid className="w-4 h-4 text-[#163E2B]" />
+                    <span className="text-xs font-bold text-[#163E2B]">CATÁLOGO</span>
+                  </Link>
+
+                  <Link
+                    to="/ofertas"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="col-span-2 flex items-center justify-between p-3.5 bg-[#FDF2F6] rounded-xl border border-[#F8BBD0] text-[#C52B66] font-bold text-xs transition hover:bg-[#FCE4EC] shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-4 h-4 text-[#D83173]" />
+                      <span>OFERTAS DESTACADAS</span>
+                    </div>
+                    <span className="text-[10px] bg-white text-[#D83173] px-2.5 py-1 rounded-md shadow-2xs font-black">
+                      VER OFERTAS
+                    </span>
+                  </Link>
+                </div>
+
+                {/* Categories */}
+                <div className="pt-2 border-t border-[#F0EAE1]">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#8D9B91] px-1 block mb-2">
+                    Categorías de Belleza
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {categories.map((cat) => (
+                      <Link
+                        key={cat.id}
+                        to={`/categoria/${cat.slug}`}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="p-2.5 rounded-xl bg-[#FAF8F5] hover:bg-[#FDF2F6] hover:text-[#D83173] text-stone-700 text-xs font-semibold transition truncate border border-[#F0EAE1] hover:border-[#D83173]/20 flex items-center justify-between"
+                      >
+                        <span className="truncate">{cat.name}</span>
+                        <span className="text-[10px] text-stone-400">→</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Brands */}
+                <div className="pt-2 border-t border-[#F0EAE1]">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#8D9B91] px-1 block mb-2">
+                    Nuestras Marcas Originales
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {brands.map((br) => (
+                      <Link
+                        key={br.id}
+                        to={`/marca/${br.slug}`}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="p-2.5 rounded-xl bg-[#FAF8F5] hover:bg-[#EAF2ED] hover:text-[#163E2B] text-stone-700 text-xs font-bold text-center transition truncate border border-[#F0EAE1] hover:border-[#163E2B]/20"
+                      >
+                        {br.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Contact & Account Links */}
+                <div className="pt-2 border-t border-[#F0EAE1] space-y-2">
+                  <Link
+                    to="/contacto"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-[#FAF8F5] hover:bg-white text-stone-700 text-xs font-semibold transition border border-[#F0EAE1]"
+                  >
+                    <Phone className="w-4 h-4 text-stone-500" />
+                    <span>Contacto y Asesoría</span>
+                  </Link>
+
+                  <Link
+                    to="/cuenta"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-[#FAF8F5] hover:bg-white text-stone-700 text-xs font-semibold transition border border-[#F0EAE1]"
+                  >
+                    <User className="w-4 h-4 text-stone-500" />
+                    <span>{user ? `Mi Cuenta (${user.full_name.split(' ')[0]})` : 'Iniciar Sesión'}</span>
+                  </Link>
+
+                  {isAdmin && (
                     <Link
-                      key={cat.id}
-                      to={`/categoria/${cat.slug}`}
-                      className="py-1.5 px-3 text-xs font-medium rounded-md hover:bg-[#FAF6F1] hover:text-[#D83173] transition"
+                      to="/admin"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center justify-between p-3 rounded-xl bg-[#EAF2ED] text-[#163E2B] text-xs font-bold transition border border-[#163E2B]/10 shadow-2xs"
                     >
-                      {cat.name}
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-[#163E2B]" />
+                        <span>Panel Administrativo</span>
+                      </div>
+                      <span className="text-[9px] bg-[#163E2B] text-white px-2.5 py-0.5 rounded-full font-bold">
+                        ADMIN
+                      </span>
                     </Link>
-                  ))}
+                  )}
                 </div>
               </div>
 
-              <div className="pt-2 pb-1 border-t border-[#F0EAE1]">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8D9B91] px-3">
-                  Marcas
-                </span>
-                <div className="mt-2 grid grid-cols-2 gap-1">
-                  {brands.map((br) => (
-                    <Link
-                      key={br.id}
-                      to={`/marca/${br.slug}`}
-                      className="py-1.5 px-3 text-xs font-medium rounded-md hover:bg-[#FAF6F1] hover:text-[#D83173] transition"
-                    >
-                      {br.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
+              {/* Drawer Footer - Fixed bottom */}
+              <div className="p-4 sm:p-5 border-t border-[#F0EAE1] bg-[#FAF8F5] shrink-0 space-y-2.5">
+                <a
+                  href="https://wa.me/573244456597?text=Hola%20Do%C3%B1a%20Enith%2C%20quisiera%20asesor%C3%ADa%20sobre%20los%20productos."
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded-2xl font-bold text-xs transition shadow-md"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>ASESORÍA POR WHATSAPP</span>
+                </a>
 
-              <Link
-                to="/contacto"
-                className="py-2 px-3 rounded-lg hover:bg-[#FAF6F1] hover:text-[#D83173] transition border-t border-[#F0EAE1]"
-              >
-                CONTACTO & ASESORÍA
-              </Link>
-
-              <Link
-                to="/cuenta"
-                className="py-2 px-3 rounded-lg hover:bg-[#FAF6F1] hover:text-[#D83173] transition"
-              >
-                MI CUENTA
-              </Link>
-
-              {/* Install PWA Button inside mobile menu */}
-              <div className="pt-3 pb-1 border-t border-[#F0EAE1]">
                 <InstallAppButton
-                  label="Instalar App en tu Celular"
+                  label="Instalar App en el Celular"
                   variant="primary"
-                  className="w-full justify-center py-2.5"
+                  className="w-full justify-center py-2.5 text-xs rounded-2xl shadow-xs"
                 />
               </div>
-            </nav>
-          </div>
-        </div>
-      )}
+            </div>
+          </div>,
+          document.body
+        )}
     </header>
   );
 };
