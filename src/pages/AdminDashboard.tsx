@@ -31,6 +31,7 @@ import {
   UserPlus,
   UserCheck,
   Lock,
+  CheckCircle2,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../context/AuthContext';
@@ -208,18 +209,34 @@ export const AdminDashboard: React.FC = () => {
     }
 
     try {
+      const selectedBrand = brands.find((b) => b.name === editingProduct.brand_name) || brands[0];
+      const selectedCategory = categories.find((c) => c.name === editingProduct.category_name) || categories[0];
+
+      const productPayload: any = {
+        ...editingProduct,
+        brand_id: selectedBrand?.id || editingProduct.brand_id || null,
+        brand_name: selectedBrand?.name || editingProduct.brand_name || 'Natura',
+        category_id: selectedCategory?.id || editingProduct.category_id || null,
+        category_name: selectedCategory?.name || editingProduct.category_name || 'Belleza',
+        category_slug: selectedCategory?.slug || editingProduct.category_slug || 'belleza',
+        active: editingProduct.active ?? (editingProduct as any).is_active ?? true,
+        featured: editingProduct.featured ?? (editingProduct as any).is_featured ?? false,
+        price: Number(editingProduct.price) || 0,
+        compare_price: editingProduct.compare_price ? Number(editingProduct.compare_price) : null,
+      };
+
       if (editingProduct.id) {
-        await storeService.updateProduct(editingProduct.id, editingProduct);
-        showToast('Producto actualizado con éxito', 'success');
+        await storeService.updateProduct(editingProduct.id, productPayload);
+        showToast('Producto actualizado con éxito en la base de datos', 'success');
       } else {
-        await storeService.createProduct(editingProduct as any);
-        showToast('Nuevo producto creado con éxito', 'success');
+        await storeService.createProduct(productPayload);
+        showToast('Nuevo producto guardado con éxito en la base de datos', 'success');
       }
       setEditingProduct(null);
       await loadAllData();
       await refreshStore();
     } catch (err: any) {
-      showToast(`Error al guardar el producto: ${err?.message || 'Revisa los permisos de Supabase'}`, 'error');
+      showToast(`Error al guardar el producto: ${err?.message || 'Revisa la conexión de Supabase'}`, 'error');
     }
   };
 
@@ -1086,6 +1103,26 @@ CREATE POLICY "Allow all contact" ON contact_messages FOR ALL USING (true) WITH 
                     Luego ve al <strong>SQL Editor</strong> de Supabase, pégalo y presiona <strong>Run</strong>.
                   </span>
                 </div>
+              </div>
+
+              {/* Email Not Confirmed Quick Solution Card */}
+              <div className="p-4 rounded-2xl bg-[#EBF3FF] border border-[#BFDBFE] text-xs text-[#1E3A8A] space-y-2">
+                <div className="flex items-center gap-2 font-bold text-[#1D4ED8]">
+                  <CheckCircle2 className="w-4 h-4 text-[#2563EB]" />
+                  <span>¿Compradores con error "Email not confirmed" al registrarse?</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-[#1E40AF]">
+                  Para que cualquier cliente o comprador pueda registrarse e iniciar sesión de inmediato sin tener que verificar un enlace en su bandeja de entrada:
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-[#1E3A8A] font-medium bg-white/70 p-3 rounded-xl border border-[#DBEAFE]">
+                  <li>Entra a tu panel en <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="font-bold underline text-[#2563EB]">supabase.com</a>.</li>
+                  <li>Ve a <strong>Authentication</strong> (icono de candado / usuarios) en el menú lateral izquierdo.</li>
+                  <li>Haz clic en <strong>Providers</strong> y luego abre <strong>Email</strong>.</li>
+                  <li>Desactiva el interruptor <strong>"Confirm email"</strong> (déjalo en <strong>OFF / Desactivado</strong>) y haz clic en <strong>Save</strong>.</li>
+                </ol>
+                <p className="text-[10px] text-emerald-800 font-semibold">
+                  ✓ Con esto, todos los usuarios que se registren en tu tienda entrarán directamente a su cuenta sin ningún bloqueo.
+                </p>
               </div>
             </div>
 

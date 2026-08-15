@@ -95,9 +95,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithEmail = async (email: string, pass: string) => {
+    const cleanEmail = email.trim();
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-      return { error: error ? new Error(error.message) : null };
+      const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: pass });
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('email not confirmed') || msg.includes('email not verified')) {
+          return {
+            error: new Error(
+              'Tu correo aún no ha sido confirmado. (Nota: Para permitir el acceso inmediato a todos los compradores sin confirmar correo, desactiva la opción "Confirm email" en tu panel de Supabase: Authentication > Providers > Email).'
+            ),
+          };
+        }
+        if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+          return { error: new Error('Correo o contraseña incorrectos. Por favor verifica tus credenciales.') };
+        }
+        return { error: new Error(error.message) };
+      }
+
+      if (data.user) {
+        await fetchUserProfile(data.user.id, data.user.email || cleanEmail);
+      }
+      return { error: null };
     }
 
     if (pass.length < 4) {
@@ -106,8 +125,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const profile: Profile = {
       id: 'usr-' + Date.now(),
-      email,
-      full_name: email.split('@')[0],
+      email: cleanEmail,
+      full_name: cleanEmail.split('@')[0],
       role: 'customer',
       created_at: new Date().toISOString(),
     };
@@ -117,19 +136,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUpWithEmail = async (email: string, pass: string, fullName: string) => {
+    const cleanEmail = email.trim();
+    const cleanName = fullName.trim();
+
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.auth.signUp({
-        email,
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
         password: pass,
-        options: { data: { full_name: fullName } },
+        options: {
+          data: {
+            full_name: cleanName,
+            role: 'customer',
+          },
+        },
       });
-      return { error: error ? new Error(error.message) : null };
+
+      if (error) {
+        return { error: new Error(error.message) };
+      }
+
+      if (data.user) {
+        // Upsert profile into public.profiles
+        try {
+          await supabase.from('profiles').upsert(
+            {
+              id: data.user.id,
+              email: data.user.email || cleanEmail,
+              full_name: cleanName || cleanEmail.split('@')[0],
+              role: 'customer',
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'id' }
+          );
+        } catch (e) {
+          console.warn('Profile upsert note:', e);
+        }
+
+        if (data.session) {
+          await fetchUserProfile(data.user.id, data.user.email || cleanEmail);
+        }
+      }
+
+      return { error: null };
     }
 
     const profile: Profile = {
       id: 'usr-' + Date.now(),
-      email,
-      full_name: fullName,
+      email: cleanEmail,
+      full_name: cleanName,
       role: 'customer',
       created_at: new Date().toISOString(),
     };

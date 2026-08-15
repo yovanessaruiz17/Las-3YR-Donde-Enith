@@ -235,10 +235,33 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Profiles: User can read own profile; Admin can read and update all
-CREATE POLICY "Public read own profile" ON profiles FOR SELECT USING (true);
-CREATE POLICY "Public insert own profile" ON profiles FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public update own profile" ON profiles FOR UPDATE USING (true);
+-- Profiles: Full read and update
+DROP POLICY IF EXISTS "Public read own profile" ON profiles;
+DROP POLICY IF EXISTS "Public insert own profile" ON profiles;
+DROP POLICY IF EXISTS "Public update own profile" ON profiles;
+CREATE POLICY "Public all profiles" ON profiles FOR ALL USING (true) WITH CHECK (true);
+
+-- Automatic Profile Creation Trigger on Sign Up
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, full_name, role)
+  VALUES (
+    new.id, 
+    new.email, 
+    COALESCE(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    COALESCE(new.raw_user_meta_data->>'role', 'customer')
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Categories, Brands, Products, Announcements, Banners, Store Settings: Full access for client store & admin management
 CREATE POLICY "Allow all categories" ON categories FOR ALL USING (true) WITH CHECK (true);

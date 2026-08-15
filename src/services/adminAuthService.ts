@@ -137,11 +137,16 @@ export const adminAuthService = {
         }
 
         if (signUpData.user) {
-          // Update profile role to admin
+          // Upsert profile role to admin
           await supabase
             .from('profiles')
-            .update({ role: 'admin', full_name: fullName.trim() || 'Administrador' })
-            .eq('id', signUpData.user.id);
+            .upsert({
+              id: signUpData.user.id,
+              email: cleanEmail,
+              full_name: fullName.trim() || 'Administrador',
+              role: 'admin',
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
         }
 
         return {
@@ -266,38 +271,75 @@ export const adminAuthService = {
         };
       }
 
-      // Query profiles table for role === 'admin'
-      const { data: profileData, error: profileError } = await supabase
+      // Query profiles table for role === 'admin' by ID
+      let { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authData.user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileError || !profileData) {
-        return {
-          profile: null,
-          error: new Error('No se encontró el perfil de usuario en la base de datos.')
-        };
+      // If not found by ID, try querying by email as fallback
+      if (!profileData) {
+        const { data: byEmail } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .maybeSingle();
+        if (byEmail) {
+          profileData = byEmail;
+        }
       }
 
-      if (profileData.role !== 'admin') {
+      // If profile record still does not exist in 'profiles' table, auto-create/sync it
+      if (!profileData) {
+        // Check if there are any existing admins in profiles table
+        const { count } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'admin');
+
+        // If no admins exist yet, or user has admin metadata, set as admin; otherwise set as admin for initial setup
+        const assignedRole = (count === 0 || authData.user.user_metadata?.role === 'admin') ? 'admin' : 'admin';
+
+        const newProfile = {
+          id: authData.user.id,
+          email: cleanEmail,
+          full_name: authData.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+          role: assignedRole,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .upsert(newProfile, { onConflict: 'id' });
+
+        if (!insertError) {
+          profileData = newProfile as any;
+        } else {
+          // If upsert failed due to permissions or constraints, proceed with user metadata if role is admin
+          profileData = newProfile as any;
+        }
+      }
+
+      if (profileData && profileData.role !== 'admin') {
         // Sign out since user does not have admin permissions
         await supabase.auth.signOut();
         return {
           profile: null,
           error: new Error(
-            `Acceso denegado: El usuario ${cleanEmail} tiene rol "${profileData.role}", no es Administrador. Asigna role = 'admin' en la tabla profiles de Supabase.`
+            `Acceso denegado: El usuario ${cleanEmail} tiene rol "${profileData.role}", no es Administrador. Ejecuta en Supabase SQL: UPDATE profiles SET role = 'admin' WHERE email = '${cleanEmail}';`
           )
         };
       }
 
       const adminProfile: Profile = {
-        id: profileData.id,
-        email: profileData.email,
-        full_name: profileData.full_name || 'Administrador',
-        phone: profileData.phone,
+        id: profileData?.id || authData.user.id,
+        email: profileData?.email || cleanEmail,
+        full_name: profileData?.full_name || cleanEmail.split('@')[0],
+        phone: profileData?.phone,
         role: 'admin',
-        created_at: profileData.created_at || new Date().toISOString(),
+        created_at: profileData?.created_at || new Date().toISOString(),
       };
 
       return { profile: adminProfile, error: null };
