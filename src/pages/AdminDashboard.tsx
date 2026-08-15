@@ -27,12 +27,17 @@ import {
   KeyRound,
   Copy,
   Smartphone,
+  Users,
+  UserPlus,
+  UserCheck,
+  Lock,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { storeService } from '../services/storeService';
 import { totpService } from '../services/totpService';
+import { adminAuthService, AdminUserItem } from '../services/adminAuthService';
 import { Admin2FALogin } from '../components/admin/Admin2FALogin';
 import { Product, Order, Category, Brand, Banner, OrderStatus } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -69,6 +74,86 @@ export const AdminDashboard: React.FC = () => {
   const [testOtpInput, setTestOtpInput] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Admin Accounts Management States
+  const [adminsList, setAdminsList] = useState<AdminUserItem[]>([]);
+  const [loadingAdmins, setLoadingAdmins] = useState(false);
+  const [showAddAdminModal, setShowAddAdminModal] = useState(false);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAdminFullName, setNewAdminFullName] = useState('');
+  const [savingAdmin, setSavingAdmin] = useState(false);
+
+  const loadAdminsList = async () => {
+    setLoadingAdmins(true);
+    try {
+      const list = await adminAuthService.getAllAdmins();
+      setAdminsList(list);
+    } catch (err) {
+      console.error('Error cargando administradores:', err);
+    } finally {
+      setLoadingAdmins(false);
+    }
+  };
+
+  const handleCreateNewAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminEmail.trim() || !newAdminEmail.includes('@')) {
+      showToast('Ingresa un correo electrónico válido', 'error');
+      return;
+    }
+    if (newAdminPassword.length < 6) {
+      showToast('La contraseña debe tener al menos 6 caracteres', 'error');
+      return;
+    }
+
+    setSavingAdmin(true);
+    try {
+      const res = await adminAuthService.createAdminFromDashboard(
+        newAdminEmail.trim(),
+        newAdminPassword,
+        newAdminFullName.trim()
+      );
+
+      if (res.success) {
+        showToast(res.message || '¡Nuevo administrador registrado exitosamente!', 'success');
+        setNewAdminEmail('');
+        setNewAdminPassword('');
+        setNewAdminFullName('');
+        setShowAddAdminModal(false);
+        await loadAdminsList();
+      } else {
+        showToast(res.error || 'Error al registrar administrador', 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error registrando administrador', 'error');
+    } finally {
+      setSavingAdmin(false);
+    }
+  };
+
+  const handleRevokeAdmin = async (adminId: string, email: string) => {
+    if (email.toLowerCase() === user?.email?.toLowerCase()) {
+      showToast('No puedes revocar tu propio acceso administrativo', 'error');
+      return;
+    }
+
+    if (!window.confirm(`¿Estás seguro de que deseas revocar los permisos de administrador a ${email}?`)) {
+      return;
+    }
+
+    try {
+      const res = await adminAuthService.revokeAdmin(adminId, email);
+      if (res.success) {
+        showToast(`Permisos de administrador revocados para ${email}`, 'info');
+        await loadAdminsList();
+      } else {
+        showToast(res.error || 'Error al revocar permisos', 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error revocando administrador', 'error');
+    }
+  };
+
   useEffect(() => {
     const updateTicker = async () => {
       try {
@@ -103,8 +188,9 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     if (isAdmin) {
       loadAllData();
+      loadAdminsList();
     }
-  }, [isAdmin]);
+  }, [isAdmin, activeTab]);
 
   if (!isAdmin) {
     return <Admin2FALogin />;
@@ -212,7 +298,7 @@ export const AdminDashboard: React.FC = () => {
             { id: 'settings', label: 'Configuración Tienda', icon: Settings },
             { id: 'messages', label: `Mensajes (${messages.length})`, icon: MessageSquare },
             { id: 'database', label: 'Supabase & Netlify', icon: Database },
-            { id: 'security', label: 'Seguridad 2FA', icon: ShieldCheck },
+            { id: 'security', label: 'Seguridad & Administradores', icon: ShieldCheck },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -1257,8 +1343,217 @@ UPDATE profiles SET role = 'admin' WHERE email = '{user?.email || 'enith@las3yr.
                   <li>
                     <strong>Triple Capa de Seguridad:</strong> Correo Electrónico + Contraseña en Base de Datos + Validación de Rol Admin + Código Dinámico 2FA.
                   </li>
+                  <li>
+                    <strong>Registro Privado:</strong> Nadie puede registrarse como administrador desde afuera; los administradores solo pueden ser dados de alta desde este panel por un administrador activo.
+                  </li>
                 </ul>
               </div>
+            </div>
+
+            {/* Admin Accounts Management Card */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#EFE9E1] shadow-2xs space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#F0EAE1] pb-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#163E2B] text-white flex items-center justify-center shadow-xs">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-serif text-xl font-bold text-[#163E2B]">
+                      Administradores Autorizados
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Gestiona quién tiene acceso y permisos administrativos para operar la tienda.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={loadAdminsList}
+                    disabled={loadingAdmins}
+                    className="p-2.5 rounded-xl border border-stone-200 text-stone-600 hover:text-[#163E2B] hover:bg-stone-50 transition cursor-pointer"
+                    title="Recargar lista"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loadingAdmins ? 'animate-spin' : ''}`} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAdminModal(true)}
+                    className="px-4 py-2.5 rounded-xl bg-[#163E2B] hover:bg-[#0F2B1E] text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition shadow-md cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Registrar Nuevo Administrador</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* List of Admins */}
+              <div className="space-y-3">
+                {loadingAdmins ? (
+                  <div className="py-8 text-center text-xs text-stone-400">
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#163E2B]" />
+                    <span>Cargando cuentas administrativas...</span>
+                  </div>
+                ) : adminsList.length === 0 ? (
+                  <div className="bg-[#FAF8F5] p-6 rounded-2xl border border-stone-200 text-center space-y-2">
+                    <UserCheck className="w-8 h-8 text-stone-400 mx-auto" />
+                    <p className="text-xs font-bold text-stone-700">Administrador Activo Actual: {user?.email}</p>
+                    <p className="text-[11px] text-stone-500">
+                      Para añadir a otro miembro de tu equipo como administrador, haz clic en "Registrar Nuevo Administrador".
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-stone-100">
+                    {adminsList.map((adm) => {
+                      const isCurrent = adm.email.toLowerCase() === user?.email?.toLowerCase();
+                      return (
+                        <div
+                          key={adm.id || adm.email}
+                          className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-[#FAF4ED] border border-[#EBE1D5] flex items-center justify-center text-[#163E2B] font-serif font-bold text-sm">
+                              {adm.fullName?.charAt(0)?.toUpperCase() || 'A'}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs font-bold text-[#163E2B]">{adm.fullName}</p>
+                                {isCurrent && (
+                                  <span className="px-2 py-0.5 rounded-full bg-[#EAF2ED] text-[#163E2B] font-bold text-[9px] uppercase tracking-wider">
+                                    Tú (Sesión actual)
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-stone-500 font-mono">{adm.email}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 self-end sm:self-center">
+                            <span className="px-2.5 py-1 rounded-lg bg-stone-100 text-stone-600 font-semibold text-[10px] uppercase tracking-wider border border-stone-200">
+                              Rol: {adm.role}
+                            </span>
+                            <span className="text-[10px] text-stone-400 hidden sm:inline">
+                              {adm.source === 'supabase' ? 'Supabase' : 'BD Local'}
+                            </span>
+
+                            {!isCurrent && (
+                              <button
+                                type="button"
+                                onClick={() => handleRevokeAdmin(adm.id, adm.email)}
+                                className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                title="Revocar permisos de administrador"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Admin Modal (Inside Dashboard) */}
+        {showAddAdminModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-[#EBE1D5] space-y-4 animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-[#F0EAE1] pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#EAF2ED] text-[#163E2B] flex items-center justify-center">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-serif font-bold text-[#163E2B] text-base">
+                    Registrar Nuevo Administrador
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddAdminModal(false)}
+                  className="p-1 text-stone-400 hover:text-stone-700 rounded-full cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-xs text-stone-500 leading-relaxed">
+                Crea una cuenta con permisos administrativos completos para un miembro de tu equipo. Podrá acceder al panel con su correo, contraseña y la clave 2FA Authenticator.
+              </p>
+
+              <form onSubmit={handleCreateNewAdmin} className="space-y-3.5 text-left">
+                <div>
+                  <label className="block text-xs font-bold text-[#163E2B] mb-1">Nombre Completo</label>
+                  <input
+                    type="text"
+                    value={newAdminFullName}
+                    onChange={(e) => setNewAdminFullName(e.target.value)}
+                    placeholder="ej: Enith Ramos / Gerente"
+                    required
+                    className="w-full bg-[#FAF8F5] border border-[#E4DDD3] focus:border-[#163E2B] focus:bg-white rounded-xl text-xs py-2.5 px-3 outline-none transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#163E2B] mb-1">Correo Electrónico</label>
+                  <input
+                    type="email"
+                    value={newAdminEmail}
+                    onChange={(e) => setNewAdminEmail(e.target.value)}
+                    placeholder="ej: nuevo.admin@las3yr.com"
+                    required
+                    className="w-full bg-[#FAF8F5] border border-[#E4DDD3] focus:border-[#163E2B] focus:bg-white rounded-xl text-xs py-2.5 px-3 outline-none transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#163E2B] mb-1">Contraseña (Mínimo 6 caracteres)</label>
+                  <input
+                    type="password"
+                    value={newAdminPassword}
+                    onChange={(e) => setNewAdminPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                    className="w-full bg-[#FAF8F5] border border-[#E4DDD3] focus:border-[#163E2B] focus:bg-white rounded-xl text-xs py-2.5 px-3 outline-none transition"
+                  />
+                </div>
+
+                <div className="bg-[#FAF6F0] p-3 rounded-xl border border-[#EBE1D5] text-[11px] text-stone-600">
+                  <span>🔒 El nuevo administrador obtendrá automáticamente el rol <strong className="text-[#163E2B]">admin</strong> y podrá gestionar pedidos, productos e inventario.</span>
+                </div>
+
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAdminModal(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-50 font-bold text-xs uppercase tracking-wider transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingAdmin}
+                    className="flex-1 py-2.5 rounded-xl bg-[#163E2B] hover:bg-[#0F2B1E] text-white font-bold text-xs uppercase tracking-wider transition shadow-md cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {savingAdmin ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Guardando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Crear Administrador</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

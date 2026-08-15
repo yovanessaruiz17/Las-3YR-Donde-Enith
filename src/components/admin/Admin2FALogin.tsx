@@ -14,14 +14,12 @@ import {
   Lock,
   Eye,
   EyeOff,
-  UserPlus,
   Database,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
 import { totpService } from '../../services/totpService';
-import { adminAuthService } from '../../services/adminAuthService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 
 export const Admin2FALogin: React.FC = () => {
@@ -36,13 +34,6 @@ export const Admin2FALogin: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
-
-  // Register Admin modal state (for offline/local DB initial setup)
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [regFullName, setRegFullName] = useState('');
-  const [regLoading, setRegLoading] = useState(false);
 
   // Live rolling preview for setup helper
   const [liveCode, setLiveCode] = useState('------');
@@ -100,33 +91,6 @@ export const Admin2FALogin: React.FC = () => {
     }
   };
 
-  const handleRegisterLocalAdmin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!regEmail.trim() || !regEmail.includes('@')) {
-      showToast('Ingresa un correo electrónico válido.', 'error');
-      return;
-    }
-    if (regPassword.length < 6) {
-      showToast('La contraseña debe tener al menos 6 caracteres.', 'error');
-      return;
-    }
-
-    setRegLoading(true);
-    try {
-      const res = await adminAuthService.registerLocalAdmin(regEmail, regPassword, regFullName);
-      if (res.success) {
-        showToast('¡Administrador registrado exitosamente con rol de admin!', 'success');
-        setEmail(regEmail.trim());
-        setPassword(regPassword);
-        setShowRegisterModal(false);
-      } else {
-        showToast(res.error || 'Error al registrar administrador', 'error');
-      }
-    } finally {
-      setRegLoading(false);
-    }
-  };
-
   const handleCopySecret = () => {
     const secret = totpService.getSecret();
     navigator.clipboard.writeText(secret);
@@ -157,7 +121,7 @@ export const Admin2FALogin: React.FC = () => {
               Acceso Administrativo
             </h1>
             <p className="text-xs text-stone-500 mt-1.5 leading-relaxed">
-              Área protegida para la administración de Las 3YR. Requiere correo, contraseña registrada y código temporal Authenticator.
+              Área protegida para la administración de Las 3YR. Requiere correo, contraseña registrada en la base de datos y código temporal Authenticator.
             </p>
           </div>
 
@@ -167,7 +131,7 @@ export const Admin2FALogin: React.FC = () => {
             <span>
               Verificación de Rol:{' '}
               <strong className="text-[#163E2B]">
-                {isSupabaseConfigured ? 'Base de Datos Supabase (role = admin)' : 'Base de Datos Local Cifrada'}
+                {isSupabaseConfigured ? 'Base de Datos Supabase (role = admin)' : 'Base de Datos Cifrada'}
               </strong>
             </span>
           </div>
@@ -283,7 +247,7 @@ export const Admin2FALogin: React.FC = () => {
               {loading ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Validando rol y credenciales...</span>
+                  <span>Validando rol y credenciales en BD...</span>
                 </>
               ) : (
                 <>
@@ -305,17 +269,6 @@ export const Admin2FALogin: React.FC = () => {
               <span>¿Primera vez? Vincular Authenticator con QR</span>
             </button>
 
-            {!isSupabaseConfigured && (
-              <button
-                type="button"
-                onClick={() => setShowRegisterModal(true)}
-                className="w-full py-2 px-3 rounded-xl text-stone-600 hover:text-[#163E2B] text-[11px] font-medium flex items-center justify-center gap-1.5 transition cursor-pointer"
-              >
-                <UserPlus className="w-3.5 h-3.5 text-[#163E2B]" />
-                <span>Registrar / Crear Administrador en Base de Datos Local</span>
-              </button>
-            )}
-
             <div className="pt-1">
               <Link
                 to="/"
@@ -327,77 +280,6 @@ export const Admin2FALogin: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Register Local Admin Modal */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-[#EBE1D5] space-y-4">
-            <div className="flex items-center justify-between border-b border-[#F0EAE1] pb-3">
-              <div className="flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-[#163E2B]" />
-                <h3 className="font-serif font-bold text-[#163E2B] text-base">
-                  Registrar Administrador en BD
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowRegisterModal(false)}
-                className="p-1 text-stone-400 hover:text-stone-700 rounded-full cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-stone-500">
-              Guarda tus credenciales de administrador en la base de datos con contraseña cifrada (SHA-256) y rol administrativo.
-            </p>
-
-            <form onSubmit={handleRegisterLocalAdmin} className="space-y-3 text-left">
-              <div>
-                <label className="block text-xs font-bold text-[#163E2B] mb-1">Nombre Completo</label>
-                <input
-                  type="text"
-                  value={regFullName}
-                  onChange={(e) => setRegFullName(e.target.value)}
-                  placeholder="ej: Enith — Propietaria"
-                  className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs py-2 px-3 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#163E2B] mb-1">Correo Electrónico</label>
-                <input
-                  type="email"
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="ej: enith@las3yr.com"
-                  required
-                  className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs py-2 px-3 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#163E2B] mb-1">Contraseña (Mínimo 6 caracteres)</label>
-                <input
-                  type="password"
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs py-2 px-3 outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={regLoading}
-                className="w-full py-3 rounded-xl bg-[#163E2B] hover:bg-[#0F2B1E] text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer mt-2"
-              >
-                {regLoading ? 'Guardando en BD...' : 'Guardar Administrador con Rol Admin'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Authenticator Setup Modal */}
       {showSetupModal && (

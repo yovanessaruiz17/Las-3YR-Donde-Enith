@@ -9,6 +9,15 @@ import { totpService } from './totpService';
 
 const LOCAL_ADMIN_USERS_KEY = 'las3yr_local_admin_db_v2';
 
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  fullName: string;
+  role: 'admin';
+  createdAt: string;
+  source: 'supabase' | 'local';
+}
+
 export interface LocalAdminAccount {
   id: string;
   email: string;
@@ -50,14 +59,107 @@ export const adminAuthService = {
   },
 
   /**
-   * Check if there is at least one admin registered
+   * Check if there is at least one admin registered in local DB
    */
   hasAdminAccounts(): boolean {
     return this.getLocalAdmins().length > 0;
   },
 
   /**
-   * Register or initialize an admin user with encrypted password in local database
+   * Fetch all administrators (from Supabase profiles if configured, or local DB)
+   */
+  async getAllAdmins(): Promise<AdminUserItem[]> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, role, created_at')
+          .eq('role', 'admin')
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          return data.map((p) => ({
+            id: p.id,
+            email: p.email,
+            fullName: p.full_name || 'Administrador',
+            role: 'admin',
+            createdAt: p.created_at || new Date().toISOString(),
+            source: 'supabase',
+          }));
+        }
+      } catch (err) {
+        console.warn('Error fetching admins from Supabase:', err);
+      }
+    }
+
+    // Fallback to local accounts
+    const local = this.getLocalAdmins();
+    return local.map((a) => ({
+      id: a.id,
+      email: a.email,
+      fullName: a.fullName,
+      role: 'admin',
+      createdAt: a.createdAt,
+      source: 'local',
+    }));
+  },
+
+  /**
+   * Register a new admin user from INSIDE the admin dashboard
+   */
+  async createAdminFromDashboard(
+    email: string,
+    pass: string,
+    fullName: string
+  ): Promise<{ success: boolean; error: string | null; message?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Correo electrónico inválido.' };
+    }
+    if (pass.length < 6) {
+      return { success: false, error: 'La contraseña debe tener al menos 6 caracteres.' };
+    }
+
+    // 1. If Supabase is connected
+    if (isSupabaseConfigured && supabase) {
+      try {
+        // Attempt creating auth user
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: pass,
+          options: {
+            data: { full_name: fullName.trim() || 'Administrador' }
+          }
+        });
+
+        if (signUpError) {
+          return { success: false, error: signUpError.message };
+        }
+
+        if (signUpData.user) {
+          // Update profile role to admin
+          await supabase
+            .from('profiles')
+            .update({ role: 'admin', full_name: fullName.trim() || 'Administrador' })
+            .eq('id', signUpData.user.id);
+        }
+
+        return {
+          success: true,
+          error: null,
+          message: `Administrador ${cleanEmail} registrado en Supabase con rol de 'admin'.`
+        };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'Error registrando en Supabase.' };
+      }
+    }
+
+    // 2. Local Database
+    return await this.registerLocalAdmin(cleanEmail, pass, fullName);
+  },
+
+  /**
+   * Register or update an admin user in local database
    */
   async registerLocalAdmin(
     email: string,
@@ -94,6 +196,30 @@ export const adminAuthService = {
       admins.push(newAdmin);
     }
 
+    localStorage.setItem(LOCAL_ADMIN_USERS_KEY, JSON.stringify(admins));
+    return { success: true, error: null };
+  },
+
+  /**
+   * Revoke admin role / remove admin
+   */
+  async revokeAdmin(adminId: string, email: string): Promise<{ success: boolean; error: string | null }> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: 'customer' })
+          .eq('id', adminId);
+
+        if (error) return { success: false, error: error.message };
+        return { success: true, error: null };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    // Local DB
+    const admins = this.getLocalAdmins().filter((a) => a.id !== adminId && a.email.toLowerCase() !== email.toLowerCase());
     localStorage.setItem(LOCAL_ADMIN_USERS_KEY, JSON.stringify(admins));
     return { success: true, error: null };
   },
@@ -180,9 +306,9 @@ export const adminAuthService = {
     // 3. Local Database Authentication (with SHA-256 salted hashes)
     const admins = this.getLocalAdmins();
 
-    // If no admin accounts exist yet, allow initial creation
+    // If no admin accounts exist yet in local contingency mode, seed the initial owner account
     if (admins.length === 0) {
-      const reg = await this.registerLocalAdmin(cleanEmail, pass, 'Administrador');
+      const reg = await this.registerLocalAdmin(cleanEmail, pass, 'Administradora');
       if (!reg.success) {
         return { profile: null, error: new Error(reg.error || 'Error creando cuenta de administrador') };
       }
