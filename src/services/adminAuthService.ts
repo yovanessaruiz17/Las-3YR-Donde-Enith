@@ -265,10 +265,7 @@ export const adminAuthService = {
       });
 
       if (authError || !authData.user) {
-        // Check if the error is invalid credentials and user is trying to set up / recover password
-        const isOwnerEmail = cleanEmail === 'yorle170203@gmail.com';
-        
-        // If password login failed in Supabase auth, check if the account exists in public.profiles with admin role
+        // If Supabase auth failed, check if there is an account in profiles with admin role and local salted hash
         const { data: directProfile } = await supabase
           .from('profiles')
           .select('*')
@@ -276,46 +273,49 @@ export const adminAuthService = {
           .maybeSingle();
 
         if (directProfile && directProfile.role === 'admin') {
-          // If valid 2FA TOTP code was provided, allow owner/admin to authenticate and auto-update/repair their password
-          try {
-            // Attempt to update user password if session exists or return authenticated admin profile
+          // Check if we have a matching salted password locally or if this is the initial registration
+          const localAdmins = this.getLocalAdmins();
+          const existingLocal = localAdmins.find((a) => a.email.toLowerCase() === cleanEmail);
+
+          if (existingLocal) {
+            const computedHash = await hashPasswordWithSalt(pass, existingLocal.salt);
+            if (computedHash === existingLocal.passwordHash) {
+              const adminProfile: Profile = {
+                id: directProfile.id || existingLocal.id,
+                email: directProfile.email || cleanEmail,
+                full_name: directProfile.full_name || existingLocal.fullName,
+                phone: directProfile.phone,
+                role: 'admin',
+                created_at: directProfile.created_at || existingLocal.createdAt,
+              };
+              return { profile: adminProfile, error: null };
+            } else {
+              return {
+                profile: null,
+                error: new Error('Contraseña de administrador incorrecta.')
+              };
+            }
+          } else {
+            // First time login for this admin in database: initialize salted password hash
+            await this.registerLocalAdmin(cleanEmail, pass, directProfile.full_name || 'Administrador');
             const adminProfile: Profile = {
-              id: directProfile.id || 'admin-direct',
+              id: directProfile.id,
               email: directProfile.email || cleanEmail,
-              full_name: directProfile.full_name || 'Enith — Propietaria',
+              full_name: directProfile.full_name || 'Administrador',
               phone: directProfile.phone,
               role: 'admin',
               created_at: directProfile.created_at || new Date().toISOString(),
             };
-
-            // Also register in local DB so offline/fallback is always available
-            await this.registerLocalAdmin(cleanEmail, pass, directProfile.full_name || 'Administradora');
-
             return { profile: adminProfile, error: null };
-          } catch (e) {
-            console.warn('Fallback admin auth warning:', e);
           }
-        }
-
-        // If it's the owner email or general admin with valid 2FA, allow fallback entry
-        if (isOwnerEmail) {
-          const adminProfile: Profile = {
-            id: 'admin-owner',
-            email: cleanEmail,
-            full_name: 'Enith — Propietaria (Las 3YR)',
-            role: 'admin',
-            created_at: new Date().toISOString(),
-          };
-          await this.registerLocalAdmin(cleanEmail, pass, 'Enith — Propietaria');
-          return { profile: adminProfile, error: null };
         }
 
         return {
           profile: null,
           error: new Error(
             authError?.message === 'Invalid login credentials'
-              ? 'Contraseña o correo incorrectos en Supabase. Si eres la propietaria, introduce tu correo de administradora con el código 2FA de Authenticator.'
-              : (authError?.message || 'Error de autenticación en la base de datos.')
+              ? 'Correo o contraseña de administrador incorrectos.'
+              : (authError?.message || 'Error al autenticar credenciales en la base de datos.')
           )
         };
       }
