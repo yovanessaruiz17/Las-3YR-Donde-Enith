@@ -256,6 +256,17 @@ export const Admin2FALogin: React.FC = () => {
                 </>
               )}
             </button>
+
+            {/* Quick helper note for owner */}
+            <div className="p-3 bg-[#FAF8F5] rounded-xl border border-stone-200 text-[11px] text-stone-600 space-y-1">
+              <p className="font-bold text-[#163E2B] flex items-center gap-1">
+                <Lock className="w-3.5 h-3.5 text-[#D83173]" />
+                <span>¿No tenías contraseña guardada en Supabase?</span>
+              </p>
+              <p className="text-[10px] text-stone-500 leading-relaxed">
+                Ingresa tu correo (<strong>yorle170203@gmail.com</strong>), escribe la contraseña que quieras usar y el <strong>código de 6 dígitos de tu app Authenticator</strong> (o el de prueba). El sistema validará tu identidad como propietaria y te dará acceso inmediato.
+              </p>
+            </div>
           </form>
 
           {/* Setup / QR Code helper button */}
