@@ -219,11 +219,14 @@ export const AdminDashboard: React.FC = () => {
         category_id: selectedCategory?.id || editingProduct.category_id || null,
         category_name: selectedCategory?.name || editingProduct.category_name || 'Belleza',
         category_slug: selectedCategory?.slug || editingProduct.category_slug || 'belleza',
-        active: editingProduct.active ?? (editingProduct as any).is_active ?? true,
-        featured: editingProduct.featured ?? (editingProduct as any).is_featured ?? false,
+        active: editingProduct.active !== undefined ? Boolean(editingProduct.active) : true,
+        featured: Boolean(editingProduct.featured),
         price: Number(editingProduct.price) || 0,
         compare_price: editingProduct.compare_price ? Number(editingProduct.compare_price) : null,
       };
+
+      delete productPayload.is_active;
+      delete productPayload.is_featured;
 
       if (editingProduct.id) {
         await storeService.updateProduct(editingProduct.id, productPayload);
@@ -372,7 +375,7 @@ export const AdminDashboard: React.FC = () => {
                   {products.length}
                 </p>
                 <span className="text-[11px] text-[#163E2B] font-semibold mt-1 block">
-                  {products.filter((p) => p.is_active).length} activos para compra
+                  {products.filter((p) => p.active !== false).length} activos para compra
                 </span>
               </div>
 
@@ -439,8 +442,8 @@ export const AdminDashboard: React.FC = () => {
                     setEditingProduct({
                       name: '',
                       price: 50000,
-                      is_active: true,
-                      is_featured: false,
+                      active: true,
+                      featured: false,
                       brand_name: 'Natura',
                       category_name: 'Belleza',
                       main_image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
@@ -562,8 +565,8 @@ export const AdminDashboard: React.FC = () => {
                   setEditingProduct({
                     name: '',
                     price: 45000,
-                    is_active: true,
-                    is_featured: false,
+                    active: true,
+                    featured: false,
                     brand_name: 'Natura',
                     category_name: 'Belleza',
                     main_image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
@@ -682,16 +685,16 @@ export const AdminDashboard: React.FC = () => {
                     <label className="flex items-center gap-2 text-xs font-bold text-[#163E2B] cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={editingProduct.is_active ?? true}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, is_active: e.target.checked })}
+                        checked={editingProduct.active !== false}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, active: e.target.checked })}
                       />
                       <span>Producto Activo en Tienda</span>
                     </label>
                     <label className="flex items-center gap-2 text-xs font-bold text-[#163E2B] cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={editingProduct.is_featured ?? false}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, is_featured: e.target.checked })}
+                        checked={Boolean(editingProduct.featured)}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, featured: e.target.checked })}
                       />
                       <span>Destacado en Inicio</span>
                     </label>
@@ -751,12 +754,12 @@ export const AdminDashboard: React.FC = () => {
                       <td className="py-2.5">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            p.is_active
+                            p.active !== false
                               ? 'bg-[#E9F3EC] text-[#163E2B]'
                               : 'bg-rose-100 text-rose-700'
                           }`}
                         >
-                          {p.is_active ? 'Activo' : 'Inactivo'}
+                          {p.active !== false ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
                       <td className="py-2.5 text-right space-x-2">
