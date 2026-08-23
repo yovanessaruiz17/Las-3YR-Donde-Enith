@@ -681,20 +681,69 @@ export const storeService = {
   },
 
   // ANNOUNCEMENTS
-  async getAnnouncements(): Promise<Announcement[]> {
+  async getAnnouncements(activeOnly = true): Promise<Announcement[]> {
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase
-          .from('announcements')
-          .select('*')
-          .eq('active', true)
-          .order('sort_order', { ascending: true });
+        let query = supabase.from('announcements').select('*').order('sort_order', { ascending: true });
+        if (activeOnly) query = query.eq('active', true);
+        const { data, error } = await query;
         if (!error && data && data.length > 0) return data as Announcement[];
       } catch (err) {
         console.warn('Supabase getAnnouncements fallback', err);
       }
     }
-    return getLocalData<Announcement[]>(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, INITIAL_ANNOUNCEMENTS);
+    const list = getLocalData<Announcement[]>(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, INITIAL_ANNOUNCEMENTS);
+    return activeOnly ? list.filter((a) => a.active) : list;
+  },
+
+  async createAnnouncement(announcementData: Omit<Announcement, 'id'>): Promise<Announcement> {
+    const newAnn: Announcement = {
+      ...announcementData,
+      id: 'ann-' + Date.now(),
+      created_at: new Date().toISOString(),
+    };
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('announcements').insert([newAnn]).select().single();
+        if (!error && data) return data as Announcement;
+      } catch (err) {
+        console.warn('Supabase createAnnouncement fallback', err);
+      }
+    }
+    const list = getLocalData<Announcement[]>(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, INITIAL_ANNOUNCEMENTS);
+    list.push(newAnn);
+    setLocalData(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, list);
+    return newAnn;
+  },
+
+  async updateAnnouncement(id: string, updates: Partial<Announcement>): Promise<Announcement> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('announcements').update(updates).eq('id', id).select().single();
+        if (!error && data) return data as Announcement;
+      } catch (err) {
+        console.warn('Supabase updateAnnouncement fallback', err);
+      }
+    }
+    const list = getLocalData<Announcement[]>(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, INITIAL_ANNOUNCEMENTS);
+    const index = list.findIndex((a) => a.id === id);
+    if (index === -1) throw new Error('Anuncio no encontrado');
+    list[index] = { ...list[index], ...updates };
+    setLocalData(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, list);
+    return list[index];
+  },
+
+  async deleteAnnouncement(id: string): Promise<boolean> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('announcements').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase deleteAnnouncement fallback', err);
+      }
+    }
+    const list = getLocalData<Announcement[]>(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, INITIAL_ANNOUNCEMENTS);
+    setLocalData(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, list.filter((a) => a.id !== id));
+    return true;
   },
 
   async updateAnnouncements(list: Announcement[]): Promise<void> {
@@ -709,20 +758,68 @@ export const storeService = {
   },
 
   // BANNERS
-  async getBanners(): Promise<Banner[]> {
+  async getBanners(activeOnly = true): Promise<Banner[]> {
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase
-          .from('banners')
-          .select('*')
-          .eq('active', true)
-          .order('sort_order', { ascending: true });
+        let query = supabase.from('banners').select('*').order('sort_order', { ascending: true });
+        if (activeOnly) query = query.eq('active', true);
+        const { data, error } = await query;
         if (!error && data && data.length > 0) return data as Banner[];
       } catch (err) {
         console.warn('Supabase getBanners fallback', err);
       }
     }
-    return getLocalData<Banner[]>(LOCAL_STORAGE_KEYS.BANNERS, INITIAL_BANNERS);
+    const list = getLocalData<Banner[]>(LOCAL_STORAGE_KEYS.BANNERS, INITIAL_BANNERS);
+    return activeOnly ? list.filter((b) => b.active) : list;
+  },
+
+  async createBanner(bannerData: Omit<Banner, 'id'>): Promise<Banner> {
+    const newBanner: Banner = {
+      ...bannerData,
+      id: 'ban-' + Date.now(),
+    };
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('banners').insert([newBanner]).select().single();
+        if (!error && data) return data as Banner;
+      } catch (err) {
+        console.warn('Supabase createBanner fallback', err);
+      }
+    }
+    const list = getLocalData<Banner[]>(LOCAL_STORAGE_KEYS.BANNERS, INITIAL_BANNERS);
+    list.push(newBanner);
+    setLocalData(LOCAL_STORAGE_KEYS.BANNERS, list);
+    return newBanner;
+  },
+
+  async updateBanner(id: string, updates: Partial<Banner>): Promise<Banner> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('banners').update(updates).eq('id', id).select().single();
+        if (!error && data) return data as Banner;
+      } catch (err) {
+        console.warn('Supabase updateBanner fallback', err);
+      }
+    }
+    const list = getLocalData<Banner[]>(LOCAL_STORAGE_KEYS.BANNERS, INITIAL_BANNERS);
+    const index = list.findIndex((b) => b.id === id);
+    if (index === -1) throw new Error('Banner no encontrado');
+    list[index] = { ...list[index], ...updates };
+    setLocalData(LOCAL_STORAGE_KEYS.BANNERS, list);
+    return list[index];
+  },
+
+  async deleteBanner(id: string): Promise<boolean> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('banners').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase deleteBanner fallback', err);
+      }
+    }
+    const list = getLocalData<Banner[]>(LOCAL_STORAGE_KEYS.BANNERS, INITIAL_BANNERS);
+    setLocalData(LOCAL_STORAGE_KEYS.BANNERS, list.filter((b) => b.id !== id));
+    return true;
   },
 
   async updateBanners(list: Banner[]): Promise<void> {
