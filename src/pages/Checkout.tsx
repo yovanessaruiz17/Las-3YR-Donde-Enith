@@ -20,6 +20,12 @@ import { useAuth } from '../context/AuthContext';
 import { storeService } from '../services/storeService';
 import { Order, PaymentMethod, DeliveryMethod } from '../types';
 import { SEOHead } from '../components/common/SEOHead';
+import {
+  sanitizePlainText,
+  sanitizeEmail,
+  sanitizePhone,
+  sanitizeEventInput,
+} from '../lib/sanitize';
 
 export const Checkout: React.FC = () => {
   const navigate = useNavigate();
@@ -65,12 +71,32 @@ export const Checkout: React.FC = () => {
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    let cleanValue = value;
+    if (name === 'email') {
+      cleanValue = sanitizeEmail(value);
+    } else if (name === 'phone' || name === 'whatsapp') {
+      cleanValue = sanitizePhone(value);
+    } else if (name === 'notes') {
+      cleanValue = sanitizePlainText(value, { allowNewlines: true, maxLength: 500 });
+    } else {
+      cleanValue = sanitizePlainText(value, { allowNewlines: false, maxLength: 200 });
+    }
+    setFormData((prev) => ({ ...prev, [name]: cleanValue }));
   };
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.phone.trim() || !formData.address.trim()) {
+    const cleanName = sanitizePlainText(formData.name, { allowNewlines: false });
+    const cleanPhone = sanitizePhone(formData.phone);
+    const cleanAddress = sanitizePlainText(formData.address, { allowNewlines: false });
+    const cleanCity = sanitizePlainText(formData.city || 'Cartagena', { allowNewlines: false });
+    const cleanDepartment = sanitizePlainText(formData.department || 'Bolívar', { allowNewlines: false });
+    const cleanEmail = sanitizeEmail(formData.email);
+    const cleanWhatsapp = sanitizePhone(formData.whatsapp || formData.phone);
+    const cleanNotes = sanitizePlainText(formData.notes, { allowNewlines: true, maxLength: 500 });
+
+    if (!cleanName || !cleanPhone || !cleanAddress) {
       showToast('Por favor completa todos los campos requeridos', 'error');
       return;
     }
@@ -79,14 +105,14 @@ export const Checkout: React.FC = () => {
 
     try {
       const order = await storeService.createOrder({
-        customer_name: formData.name,
-        customer_email: formData.email,
-        customer_phone: formData.phone,
-        whatsapp: formData.whatsapp || formData.phone,
-        address: formData.address,
-        city: formData.city,
-        department: formData.department,
-        notes: formData.notes,
+        customer_name: cleanName,
+        customer_email: cleanEmail,
+        customer_phone: cleanPhone,
+        whatsapp: cleanWhatsapp,
+        address: cleanAddress,
+        city: cleanCity,
+        department: cleanDepartment,
+        notes: cleanNotes,
         subtotal,
         shipping,
         total,

@@ -48,6 +48,7 @@ import { adminAuthService, AdminUserItem } from '../services/adminAuthService';
 import { Admin2FALogin } from '../components/admin/Admin2FALogin';
 import { Product, Order, Category, Brand, Banner, Announcement, OrderStatus } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { sanitizePlainText, sanitizeEmail, sanitizeUrl } from '../lib/sanitize';
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -118,7 +119,9 @@ export const AdminDashboard: React.FC = () => {
 
   const handleCreateNewAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAdminEmail.trim() || !newAdminEmail.includes('@')) {
+    const cleanEmail = sanitizeEmail(newAdminEmail);
+    const cleanFullName = sanitizePlainText(newAdminFullName);
+    if (!cleanEmail.trim() || !cleanEmail.includes('@')) {
       showToast('Ingresa un correo electrónico válido', 'error');
       return;
     }
@@ -130,9 +133,9 @@ export const AdminDashboard: React.FC = () => {
     setSavingAdmin(true);
     try {
       const res = await adminAuthService.createAdminFromDashboard(
-        newAdminEmail.trim(),
+        cleanEmail,
         newAdminPassword,
-        newAdminFullName.trim()
+        cleanFullName
       );
 
       if (res.success) {
@@ -251,11 +254,14 @@ export const AdminDashboard: React.FC = () => {
 
       const productPayload: any = {
         ...editingProduct,
+        name: sanitizePlainText(editingProduct.name),
+        description: sanitizePlainText(editingProduct.description || ''),
+        main_image: sanitizeUrl(editingProduct.main_image || ''),
         brand_id: selectedBrand?.id || editingProduct.brand_id || null,
-        brand_name: selectedBrand?.name || editingProduct.brand_name || 'Natura',
+        brand_name: sanitizePlainText(selectedBrand?.name || editingProduct.brand_name || 'Natura'),
         category_id: selectedCategory?.id || editingProduct.category_id || null,
-        category_name: selectedCategory?.name || editingProduct.category_name || 'Belleza',
-        category_slug: selectedCategory?.slug || editingProduct.category_slug || 'belleza',
+        category_name: sanitizePlainText(selectedCategory?.name || editingProduct.category_name || 'Belleza'),
+        category_slug: sanitizePlainText(selectedCategory?.slug || editingProduct.category_slug || 'belleza'),
         active: editingProduct.active !== undefined ? Boolean(editingProduct.active) : true,
         featured: Boolean(editingProduct.featured),
         price: Number(editingProduct.price) || 0,
@@ -292,18 +298,20 @@ export const AdminDashboard: React.FC = () => {
   // CATEGORY CRUD HANDLERS
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCategory || !editingCategory.name?.trim()) {
+    const cleanName = sanitizePlainText(editingCategory?.name || '');
+    if (!editingCategory || !cleanName.trim()) {
       showToast('Ingresa el nombre de la categoría', 'error');
       return;
     }
 
     try {
-      const slug = editingCategory.slug?.trim() || editingCategory.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const rawSlug = editingCategory.slug?.trim() || cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const slug = sanitizePlainText(rawSlug);
       const payload: Omit<Category, 'id'> = {
-        name: editingCategory.name.trim(),
+        name: cleanName.trim(),
         slug,
-        description: editingCategory.description?.trim() || '',
-        image_url: editingCategory.image_url?.trim() || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
+        description: sanitizePlainText(editingCategory.description || ''),
+        image_url: sanitizeUrl(editingCategory.image_url || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80'),
         sort_order: Number(editingCategory.sort_order) || adminCategories.length + 1,
         active: editingCategory.active !== false,
       };
@@ -350,19 +358,22 @@ export const AdminDashboard: React.FC = () => {
   // BRAND CRUD HANDLERS
   const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingBrand || !editingBrand.name?.trim()) {
+    const cleanName = sanitizePlainText(editingBrand?.name || '');
+    if (!editingBrand || !cleanName.trim()) {
       showToast('Ingresa el nombre de la marca', 'error');
       return;
     }
 
     try {
-      const slug = editingBrand.slug?.trim() || editingBrand.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const rawSlug = editingBrand.slug?.trim() || cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const slug = sanitizePlainText(rawSlug);
+      const logoUrl = sanitizeUrl(editingBrand.logo_url || editingBrand.image_url || '');
       const payload: Omit<Brand, 'id'> = {
-        name: editingBrand.name.trim(),
+        name: cleanName.trim(),
         slug,
-        description: editingBrand.description?.trim() || '',
-        logo_url: editingBrand.logo_url?.trim() || editingBrand.image_url?.trim() || '',
-        image_url: editingBrand.image_url?.trim() || editingBrand.logo_url?.trim() || '',
+        description: sanitizePlainText(editingBrand.description || ''),
+        logo_url: logoUrl,
+        image_url: logoUrl,
         sort_order: Number(editingBrand.sort_order) || adminBrands.length + 1,
         active: editingBrand.active !== false,
       };
@@ -409,19 +420,20 @@ export const AdminDashboard: React.FC = () => {
   // BANNER CRUD HANDLERS
   const handleSaveBanner = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingBanner || !editingBanner.title?.trim()) {
+    const cleanTitle = sanitizePlainText(editingBanner?.title || '');
+    if (!editingBanner || !cleanTitle.trim()) {
       showToast('Ingresa el título del banner', 'error');
       return;
     }
 
     try {
       const payload: Omit<Banner, 'id'> = {
-        title: editingBanner.title.trim(),
-        description: editingBanner.description?.trim() || '',
-        tag: editingBanner.tag?.trim() || 'Las mejores marcas de catálogo',
-        image_url: editingBanner.image_url?.trim() || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=80',
-        button_text: editingBanner.button_text?.trim() || 'EXPLORAR PRODUCTOS',
-        button_url: editingBanner.button_url?.trim() || '/productos',
+        title: cleanTitle.trim(),
+        description: sanitizePlainText(editingBanner.description || ''),
+        tag: sanitizePlainText(editingBanner.tag || 'Las mejores marcas de catálogo'),
+        image_url: sanitizeUrl(editingBanner.image_url || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=80'),
+        button_text: sanitizePlainText(editingBanner.button_text || 'EXPLORAR PRODUCTOS'),
+        button_url: sanitizePlainText(editingBanner.button_url || '/productos'),
         sort_order: Number(editingBanner.sort_order) || adminBanners.length + 1,
         active: editingBanner.active !== false,
       };
@@ -468,15 +480,16 @@ export const AdminDashboard: React.FC = () => {
   // ANNOUNCEMENT CRUD HANDLERS
   const handleSaveAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingAnnouncement || !editingAnnouncement.message?.trim()) {
+    const cleanMessage = sanitizePlainText(editingAnnouncement?.message || '');
+    if (!editingAnnouncement || !cleanMessage.trim()) {
       showToast('Ingresa el texto del anuncio', 'error');
       return;
     }
 
     try {
       const payload: Omit<Announcement, 'id'> = {
-        message: editingAnnouncement.message.trim(),
-        icon: editingAnnouncement.icon?.trim() || 'Sparkles',
+        message: cleanMessage.trim(),
+        icon: sanitizePlainText(editingAnnouncement.icon || 'Sparkles'),
         sort_order: Number(editingAnnouncement.sort_order) || adminAnnouncements.length + 1,
         active: editingAnnouncement.active !== false,
       };
@@ -1175,7 +1188,7 @@ export const AdminDashboard: React.FC = () => {
               <input
                 type="text"
                 value={categorySearch}
-                onChange={(e) => setCategorySearch(e.target.value)}
+                onChange={(e) => setCategorySearch(sanitizePlainText(e.target.value))}
                 placeholder="Buscar categoría..."
                 className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs py-2 px-3 outline-none"
               />
@@ -1581,7 +1594,7 @@ export const AdminDashboard: React.FC = () => {
                 <input
                   type="text"
                   value={settings.whatsapp || ''}
-                  onChange={(e) => updateSettings({ whatsapp: e.target.value })}
+                  onChange={(e) => updateSettings({ whatsapp: sanitizePlainText(e.target.value) })}
                   placeholder="+57 324 445 6597"
                   className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl py-2 px-3 text-xs outline-none"
                 />
@@ -1618,7 +1631,7 @@ export const AdminDashboard: React.FC = () => {
                 <input
                   type="text"
                   value={settings.announcement_text || ''}
-                  onChange={(e) => updateSettings({ announcement_text: e.target.value })}
+                  onChange={(e) => updateSettings({ announcement_text: sanitizePlainText(e.target.value) })}
                   className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl py-2 px-3 text-xs outline-none"
                 />
               </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Send, CheckCircle2 } from 'lucide-react';
 import { storeService } from '../../services/storeService';
 import { useStore } from '../../context/StoreContext';
+import { sanitizeEmail } from '../../lib/sanitize';
 
 export const Newsletter: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -11,10 +12,11 @@ export const Newsletter: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    const cleanEmail = sanitizeEmail(email);
+    if (!cleanEmail) return;
 
     setLoading(true);
-    const res = await storeService.subscribeNewsletter(email);
+    const res = await storeService.subscribeNewsletter(cleanEmail);
     setLoading(false);
 
     if (res.success) {
@@ -55,7 +57,7 @@ export const Newsletter: React.FC = () => {
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(sanitizeEmail(e.target.value))}
                   placeholder="Ingresa tu correo electrónico"
                   className="flex-1 bg-white px-5 py-3 rounded-full text-xs sm:text-sm text-[#183B2B] outline-none border border-[#E0D7CB] focus:border-[#D83173] focus:ring-2 focus:ring-[#D83173]/10 transition shadow-2xs placeholder:text-[#9AA89E]"
                 />

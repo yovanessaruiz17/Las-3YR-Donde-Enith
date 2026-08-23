@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { storeService } from '../services/storeService';
 import { Order } from '../types';
+import { sanitizePlainText, sanitizeEmail } from '../lib/sanitize';
 
 export const AccountPage: React.FC = () => {
   const navigate = useNavigate();
@@ -34,17 +35,30 @@ export const AccountPage: React.FC = () => {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanEmail = sanitizeEmail(email);
+    const cleanFullName = sanitizePlainText(fullName, { allowNewlines: false, maxLength: 100 });
+
+    if (!cleanEmail || !password) {
+      showToast('Por favor ingresa un correo y contraseña válidos', 'error');
+      return;
+    }
+
     setLoading(true);
 
     if (isRegister) {
-      const res = await signUpWithEmail(email, password, fullName);
+      if (!cleanFullName) {
+        showToast('Por favor ingresa tu nombre completo', 'error');
+        setLoading(false);
+        return;
+      }
+      const res = await signUpWithEmail(cleanEmail, password, cleanFullName);
       if (res.error) {
         showToast(res.error.message, 'error');
       } else {
         showToast('¡Cuenta creada con éxito!', 'success');
       }
     } else {
-      const res = await signInWithEmail(email, password);
+      const res = await signInWithEmail(cleanEmail, password);
       if (res.error) {
         showToast(res.error.message, 'error');
       } else {
@@ -86,7 +100,7 @@ export const AccountPage: React.FC = () => {
                     type="text"
                     required
                     value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    onChange={(e) => setFullName(sanitizePlainText(e.target.value, { allowNewlines: false, maxLength: 100 }))}
                     placeholder="Ej. Carolina Gómez"
                     className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs sm:text-sm py-2.5 px-3.5 outline-none focus:border-[#D83173] focus:bg-white transition"
                   />
@@ -100,7 +114,7 @@ export const AccountPage: React.FC = () => {
                     type="email"
                     required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => setEmail(sanitizeEmail(e.target.value))}
                     placeholder="tu@correo.com"
                     className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs sm:text-sm py-2.5 pl-9 pr-3.5 outline-none focus:border-[#D83173] focus:bg-white transition"
                   />

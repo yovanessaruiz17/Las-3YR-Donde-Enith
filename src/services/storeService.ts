@@ -19,6 +19,15 @@ import {
   INITIAL_BANNERS,
   INITIAL_SETTINGS,
 } from '../data/initialData';
+import {
+  sanitizePlainText,
+  sanitizeSearchQuery,
+  sanitizeEmail,
+  sanitizePhone,
+  sanitizeUrl,
+  sanitizeNumber,
+  sanitizeObject,
+} from '../lib/sanitize';
 
 const LOCAL_STORAGE_KEYS = {
   PRODUCTS: 'las3yr_products_v2',
@@ -204,14 +213,15 @@ export const storeService = {
   },
 
   async createProduct(productData: Omit<Product, 'id'> & { is_active?: boolean; is_featured?: boolean }): Promise<Product> {
-    const slug = productData.slug || (
-      productData.name
+    const rawName = sanitizePlainText(productData.name, { allowNewlines: false });
+    const slug = sanitizePlainText(productData.slug || (
+      rawName
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '') + '-' + Date.now().toString().slice(-4)
-    );
+    ));
 
     const isActive = productData.active !== undefined 
       ? Boolean(productData.active) 
@@ -225,27 +235,31 @@ export const storeService = {
       ? Boolean(productData.is_featured) 
       : false;
 
+    const cleanGallery = Array.isArray(productData.gallery)
+      ? productData.gallery.map((img) => sanitizeUrl(img)).filter(Boolean)
+      : [];
+
     const cleanProduct: Product = {
       id: 'prod-' + Date.now(),
-      name: productData.name.trim(),
+      name: rawName,
       slug,
-      sku: productData.sku ? productData.sku.trim() : (null as any),
-      brand_id: productData.brand_id && productData.brand_id.trim() ? productData.brand_id.trim() : (null as any),
-      brand_name: productData.brand_name ? productData.brand_name.trim() : (null as any),
-      category_id: productData.category_id && productData.category_id.trim() ? productData.category_id.trim() : (null as any),
-      category_name: productData.category_name ? productData.category_name.trim() : (null as any),
-      category_slug: productData.category_slug ? productData.category_slug.trim() : (null as any),
-      description: productData.description || '',
-      short_description: productData.short_description ? productData.short_description.trim() : (null as any),
-      price: Number(productData.price) || 0,
-      compare_price: productData.compare_price ? Number(productData.compare_price) : (null as any),
-      discount_percentage: Number(productData.discount_percentage) || 0,
-      stock: Number(productData.stock) || 0,
-      main_image: productData.main_image || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
-      gallery: Array.isArray(productData.gallery) ? productData.gallery : [],
-      content_spec: productData.content_spec ? productData.content_spec.trim() : (null as any),
-      rating: Number(productData.rating) || 5.0,
-      reviews_count: Number(productData.reviews_count) || 0,
+      sku: productData.sku ? sanitizePlainText(productData.sku, { allowNewlines: false }) : (null as any),
+      brand_id: productData.brand_id && productData.brand_id.trim() ? sanitizePlainText(productData.brand_id, { allowNewlines: false }) : (null as any),
+      brand_name: productData.brand_name ? sanitizePlainText(productData.brand_name, { allowNewlines: false }) : (null as any),
+      category_id: productData.category_id && productData.category_id.trim() ? sanitizePlainText(productData.category_id, { allowNewlines: false }) : (null as any),
+      category_name: productData.category_name ? sanitizePlainText(productData.category_name, { allowNewlines: false }) : (null as any),
+      category_slug: productData.category_slug ? sanitizePlainText(productData.category_slug, { allowNewlines: false }) : (null as any),
+      description: sanitizePlainText(productData.description || '', { allowNewlines: true }),
+      short_description: productData.short_description ? sanitizePlainText(productData.short_description, { allowNewlines: true }) : (null as any),
+      price: sanitizeNumber(productData.price, 0),
+      compare_price: productData.compare_price ? sanitizeNumber(productData.compare_price, 0) : (null as any),
+      discount_percentage: sanitizeNumber(productData.discount_percentage, 0),
+      stock: sanitizeNumber(productData.stock, 0),
+      main_image: sanitizeUrl(productData.main_image, 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80'),
+      gallery: cleanGallery,
+      content_spec: productData.content_spec ? sanitizePlainText(productData.content_spec, { allowNewlines: false }) : (null as any),
+      rating: sanitizeNumber(productData.rating, 5.0),
+      reviews_count: sanitizeNumber(productData.reviews_count, 0),
       featured: isFeatured,
       active: isActive,
       created_at: new Date().toISOString(),
@@ -322,20 +336,25 @@ export const storeService = {
     if (updates.featured !== undefined) cleanUpdates.featured = Boolean(updates.featured);
     else if (updates.is_featured !== undefined) cleanUpdates.featured = Boolean(updates.is_featured);
 
-    if ('brand_id' in cleanUpdates) cleanUpdates.brand_id = cleanUpdates.brand_id && String(cleanUpdates.brand_id).trim() ? String(cleanUpdates.brand_id).trim() : null;
-    if ('brand_name' in cleanUpdates) cleanUpdates.brand_name = cleanUpdates.brand_name ? String(cleanUpdates.brand_name).trim() : null;
-    if ('category_id' in cleanUpdates) cleanUpdates.category_id = cleanUpdates.category_id && String(cleanUpdates.category_id).trim() ? String(cleanUpdates.category_id).trim() : null;
-    if ('category_name' in cleanUpdates) cleanUpdates.category_name = cleanUpdates.category_name ? String(cleanUpdates.category_name).trim() : null;
-    if ('category_slug' in cleanUpdates) cleanUpdates.category_slug = cleanUpdates.category_slug ? String(cleanUpdates.category_slug).trim() : null;
-    if ('name' in cleanUpdates && cleanUpdates.name) cleanUpdates.name = String(cleanUpdates.name).trim();
-    if ('price' in cleanUpdates) cleanUpdates.price = Number(cleanUpdates.price) || 0;
-    if ('stock' in cleanUpdates) cleanUpdates.stock = Number(cleanUpdates.stock) || 0;
-    if ('compare_price' in cleanUpdates) cleanUpdates.compare_price = cleanUpdates.compare_price ? Number(cleanUpdates.compare_price) : null;
-    if ('discount_percentage' in cleanUpdates) cleanUpdates.discount_percentage = Number(cleanUpdates.discount_percentage) || 0;
-    if ('rating' in cleanUpdates) cleanUpdates.rating = Number(cleanUpdates.rating) || 5.0;
-    if ('reviews_count' in cleanUpdates) cleanUpdates.reviews_count = Number(cleanUpdates.reviews_count) || 0;
-    if ('sku' in cleanUpdates) cleanUpdates.sku = cleanUpdates.sku ? String(cleanUpdates.sku).trim() : null;
-    if ('content_spec' in cleanUpdates) cleanUpdates.content_spec = cleanUpdates.content_spec ? String(cleanUpdates.content_spec).trim() : null;
+    if ('brand_id' in cleanUpdates) cleanUpdates.brand_id = cleanUpdates.brand_id && String(cleanUpdates.brand_id).trim() ? sanitizePlainText(cleanUpdates.brand_id, { allowNewlines: false }) : null;
+    if ('brand_name' in cleanUpdates) cleanUpdates.brand_name = cleanUpdates.brand_name ? sanitizePlainText(cleanUpdates.brand_name, { allowNewlines: false }) : null;
+    if ('category_id' in cleanUpdates) cleanUpdates.category_id = cleanUpdates.category_id && String(cleanUpdates.category_id).trim() ? sanitizePlainText(cleanUpdates.category_id, { allowNewlines: false }) : null;
+    if ('category_name' in cleanUpdates) cleanUpdates.category_name = cleanUpdates.category_name ? sanitizePlainText(cleanUpdates.category_name, { allowNewlines: false }) : null;
+    if ('category_slug' in cleanUpdates) cleanUpdates.category_slug = cleanUpdates.category_slug ? sanitizePlainText(cleanUpdates.category_slug, { allowNewlines: false }) : null;
+    if ('name' in cleanUpdates && cleanUpdates.name) cleanUpdates.name = sanitizePlainText(cleanUpdates.name, { allowNewlines: false });
+    if ('slug' in cleanUpdates && cleanUpdates.slug) cleanUpdates.slug = sanitizePlainText(cleanUpdates.slug, { allowNewlines: false });
+    if ('description' in cleanUpdates) cleanUpdates.description = sanitizePlainText(cleanUpdates.description || '', { allowNewlines: true });
+    if ('short_description' in cleanUpdates) cleanUpdates.short_description = cleanUpdates.short_description ? sanitizePlainText(cleanUpdates.short_description, { allowNewlines: true }) : null;
+    if ('main_image' in cleanUpdates && cleanUpdates.main_image) cleanUpdates.main_image = sanitizeUrl(cleanUpdates.main_image);
+    if ('gallery' in cleanUpdates && Array.isArray(cleanUpdates.gallery)) cleanUpdates.gallery = cleanUpdates.gallery.map((g: any) => sanitizeUrl(g)).filter(Boolean);
+    if ('price' in cleanUpdates) cleanUpdates.price = sanitizeNumber(cleanUpdates.price, 0);
+    if ('stock' in cleanUpdates) cleanUpdates.stock = sanitizeNumber(cleanUpdates.stock, 0);
+    if ('compare_price' in cleanUpdates) cleanUpdates.compare_price = cleanUpdates.compare_price ? sanitizeNumber(cleanUpdates.compare_price) : null;
+    if ('discount_percentage' in cleanUpdates) cleanUpdates.discount_percentage = sanitizeNumber(cleanUpdates.discount_percentage, 0);
+    if ('rating' in cleanUpdates) cleanUpdates.rating = sanitizeNumber(cleanUpdates.rating, 5.0);
+    if ('reviews_count' in cleanUpdates) cleanUpdates.reviews_count = sanitizeNumber(cleanUpdates.reviews_count, 0);
+    if ('sku' in cleanUpdates) cleanUpdates.sku = cleanUpdates.sku ? sanitizePlainText(cleanUpdates.sku, { allowNewlines: false }) : null;
+    if ('content_spec' in cleanUpdates) cleanUpdates.content_spec = cleanUpdates.content_spec ? sanitizePlainText(cleanUpdates.content_spec, { allowNewlines: false }) : null;
 
     // Delete legacy/temp UI keys
     delete cleanUpdates.is_active;
@@ -445,13 +464,19 @@ export const storeService = {
   },
 
   async getCategoryBySlug(slug: string): Promise<Category | null> {
+    const cleanSlug = sanitizePlainText(slug, { allowNewlines: false }).toLowerCase();
     const categories = await this.getCategories(false);
-    return (categories || []).find((c) => c.slug?.toLowerCase() === slug?.toLowerCase()) || null;
+    return (categories || []).find((c) => c.slug?.toLowerCase() === cleanSlug) || null;
   },
 
   async createCategory(cat: Omit<Category, 'id'>): Promise<Category> {
     const newCat: Category = {
-      ...cat,
+      name: sanitizePlainText(cat.name, { allowNewlines: false }),
+      slug: sanitizePlainText(cat.slug, { allowNewlines: false }).toLowerCase(),
+      description: cat.description ? sanitizePlainText(cat.description, { allowNewlines: true }) : '',
+      image_url: cat.image_url ? sanitizeUrl(cat.image_url) : '',
+      active: cat.active !== false,
+      sort_order: sanitizeNumber(cat.sort_order, 1),
       id: 'cat-' + Date.now(),
       created_at: new Date().toISOString(),
     };
@@ -470,9 +495,17 @@ export const storeService = {
   },
 
   async updateCategory(id: string, updates: Partial<Category>): Promise<Category> {
+    const cleanUpdates: Partial<Category> = {};
+    if (updates.name !== undefined) cleanUpdates.name = sanitizePlainText(updates.name, { allowNewlines: false });
+    if (updates.slug !== undefined) cleanUpdates.slug = sanitizePlainText(updates.slug, { allowNewlines: false }).toLowerCase();
+    if (updates.description !== undefined) cleanUpdates.description = sanitizePlainText(updates.description, { allowNewlines: true });
+    if (updates.image_url !== undefined) cleanUpdates.image_url = sanitizeUrl(updates.image_url);
+    if (updates.active !== undefined) cleanUpdates.active = Boolean(updates.active);
+    if (updates.sort_order !== undefined) cleanUpdates.sort_order = sanitizeNumber(updates.sort_order, 1);
+
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase.from('categories').update(updates).eq('id', id).select().single();
+        const { data, error } = await supabase.from('categories').update(cleanUpdates).eq('id', id).select().single();
         if (!error && data) return data as Category;
       } catch (err) {
         console.warn('Supabase updateCategory fallback', err);
@@ -481,7 +514,7 @@ export const storeService = {
     const list = getLocalData<Category[]>(LOCAL_STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
     const index = list.findIndex((c) => c.id === id);
     if (index === -1) throw new Error('Categoría no encontrada');
-    list[index] = { ...list[index], ...updates };
+    list[index] = { ...list[index], ...cleanUpdates };
     setLocalData(LOCAL_STORAGE_KEYS.CATEGORIES, list);
     return list[index];
   },
@@ -517,13 +550,19 @@ export const storeService = {
   },
 
   async getBrandBySlug(slug: string): Promise<Brand | null> {
+    const cleanSlug = sanitizePlainText(slug, { allowNewlines: false }).toLowerCase();
     const brands = await this.getBrands(false);
-    return (brands || []).find((b) => b.slug?.toLowerCase() === slug?.toLowerCase() || b.name?.toLowerCase() === slug?.toLowerCase()) || null;
+    return (brands || []).find((b) => b.slug?.toLowerCase() === cleanSlug || b.name?.toLowerCase() === cleanSlug) || null;
   },
 
   async createBrand(brandData: Omit<Brand, 'id'>): Promise<Brand> {
     const newBrand: Brand = {
-      ...brandData,
+      name: sanitizePlainText(brandData.name, { allowNewlines: false }),
+      slug: sanitizePlainText(brandData.slug, { allowNewlines: false }).toLowerCase(),
+      description: brandData.description ? sanitizePlainText(brandData.description, { allowNewlines: true }) : '',
+      logo_url: brandData.logo_url ? sanitizeUrl(brandData.logo_url) : '',
+      active: brandData.active !== false,
+      sort_order: sanitizeNumber(brandData.sort_order, 1),
       id: 'brand-' + Date.now(),
       created_at: new Date().toISOString(),
     };
@@ -542,9 +581,17 @@ export const storeService = {
   },
 
   async updateBrand(id: string, updates: Partial<Brand>): Promise<Brand> {
+    const cleanUpdates: Partial<Brand> = {};
+    if (updates.name !== undefined) cleanUpdates.name = sanitizePlainText(updates.name, { allowNewlines: false });
+    if (updates.slug !== undefined) cleanUpdates.slug = sanitizePlainText(updates.slug, { allowNewlines: false }).toLowerCase();
+    if (updates.description !== undefined) cleanUpdates.description = sanitizePlainText(updates.description, { allowNewlines: true });
+    if (updates.logo_url !== undefined) cleanUpdates.logo_url = sanitizeUrl(updates.logo_url);
+    if (updates.active !== undefined) cleanUpdates.active = Boolean(updates.active);
+    if (updates.sort_order !== undefined) cleanUpdates.sort_order = sanitizeNumber(updates.sort_order, 1);
+
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase.from('brands').update(updates).eq('id', id).select().single();
+        const { data, error } = await supabase.from('brands').update(cleanUpdates).eq('id', id).select().single();
         if (!error && data) return data as Brand;
       } catch (err) {
         console.warn('Supabase updateBrand fallback', err);
@@ -553,7 +600,7 @@ export const storeService = {
     const list = getLocalData<Brand[]>(LOCAL_STORAGE_KEYS.BRANDS, INITIAL_BRANDS);
     const index = list.findIndex((b) => b.id === id);
     if (index === -1) throw new Error('Marca no encontrada');
-    list[index] = { ...list[index], ...updates };
+    list[index] = { ...list[index], ...cleanUpdates };
     setLocalData(LOCAL_STORAGE_KEYS.BRANDS, list);
     return list[index];
   },
@@ -588,15 +635,40 @@ export const storeService = {
   },
 
   async getOrderById(id: string): Promise<Order | null> {
+    const cleanId = sanitizePlainText(id, { allowNewlines: false });
     const orders = await this.getOrders();
-    return (orders || []).find((o) => o.id === id || o.order_number === id) || null;
+    return (orders || []).find((o) => o.id === cleanId || o.order_number === cleanId) || null;
   },
 
   async createOrder(orderInput: Omit<Order, 'id' | 'order_number' | 'created_at'>): Promise<Order> {
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const orderNumber = `3YR-${new Date().getFullYear().toString().slice(-2)}${randomNum}`;
+    const cleanItems = (orderInput.items || []).map((it) => ({
+      product_id: sanitizePlainText(it.product_id, { allowNewlines: false }),
+      product_name: sanitizePlainText(it.product_name, { allowNewlines: false }),
+      product_image: sanitizeUrl(it.product_image),
+      quantity: sanitizeNumber(it.quantity, 1),
+      unit_price: sanitizeNumber(it.unit_price, 0),
+      subtotal: sanitizeNumber(it.subtotal, 0),
+    }));
+
     const newOrder: Order = {
-      ...orderInput,
+      customer_name: sanitizePlainText(orderInput.customer_name, { allowNewlines: false }),
+      customer_email: sanitizeEmail(orderInput.customer_email),
+      customer_phone: sanitizePhone(orderInput.customer_phone),
+      whatsapp: sanitizePhone(orderInput.whatsapp || orderInput.customer_phone),
+      address: sanitizePlainText(orderInput.address, { allowNewlines: false }),
+      city: sanitizePlainText(orderInput.city || 'Cartagena', { allowNewlines: false }),
+      department: sanitizePlainText(orderInput.department || 'Bolívar', { allowNewlines: false }),
+      notes: orderInput.notes ? sanitizePlainText(orderInput.notes, { allowNewlines: true, maxLength: 500 }) : '',
+      subtotal: sanitizeNumber(orderInput.subtotal, 0),
+      shipping: sanitizeNumber(orderInput.shipping, 0),
+      total: sanitizeNumber(orderInput.total, 0),
+      origin: orderInput.origin || 'Web',
+      payment_method: orderInput.payment_method,
+      delivery_method: orderInput.delivery_method,
+      status: orderInput.status || 'Pendiente',
+      items: cleanItems,
       id: 'ord-' + Date.now(),
       order_number: orderNumber,
       created_at: new Date().toISOString(),
@@ -698,7 +770,10 @@ export const storeService = {
 
   async createAnnouncement(announcementData: Omit<Announcement, 'id'>): Promise<Announcement> {
     const newAnn: Announcement = {
-      ...announcementData,
+      message: sanitizePlainText(announcementData.message, { allowNewlines: false }),
+      icon: announcementData.icon ? sanitizePlainText(announcementData.icon, { allowNewlines: false }) : 'Sparkles',
+      active: announcementData.active !== false,
+      sort_order: sanitizeNumber(announcementData.sort_order, 1),
       id: 'ann-' + Date.now(),
       created_at: new Date().toISOString(),
     };
@@ -717,9 +792,15 @@ export const storeService = {
   },
 
   async updateAnnouncement(id: string, updates: Partial<Announcement>): Promise<Announcement> {
+    const cleanUpdates: Partial<Announcement> = {};
+    if (updates.message !== undefined) cleanUpdates.message = sanitizePlainText(updates.message, { allowNewlines: false });
+    if (updates.icon !== undefined) cleanUpdates.icon = sanitizePlainText(updates.icon, { allowNewlines: false });
+    if (updates.active !== undefined) cleanUpdates.active = Boolean(updates.active);
+    if (updates.sort_order !== undefined) cleanUpdates.sort_order = sanitizeNumber(updates.sort_order, 1);
+
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase.from('announcements').update(updates).eq('id', id).select().single();
+        const { data, error } = await supabase.from('announcements').update(cleanUpdates).eq('id', id).select().single();
         if (!error && data) return data as Announcement;
       } catch (err) {
         console.warn('Supabase updateAnnouncement fallback', err);
@@ -728,7 +809,7 @@ export const storeService = {
     const list = getLocalData<Announcement[]>(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, INITIAL_ANNOUNCEMENTS);
     const index = list.findIndex((a) => a.id === id);
     if (index === -1) throw new Error('Anuncio no encontrado');
-    list[index] = { ...list[index], ...updates };
+    list[index] = { ...list[index], ...cleanUpdates };
     setLocalData(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, list);
     return list[index];
   },
@@ -747,14 +828,21 @@ export const storeService = {
   },
 
   async updateAnnouncements(list: Announcement[]): Promise<void> {
+    const cleanList = list.map((a) => ({
+      ...a,
+      message: sanitizePlainText(a.message, { allowNewlines: false }),
+      icon: a.icon ? sanitizePlainText(a.icon, { allowNewlines: false }) : 'Sparkles',
+      active: Boolean(a.active),
+      sort_order: sanitizeNumber(a.sort_order, 1),
+    }));
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('announcements').upsert(list);
+        await supabase.from('announcements').upsert(cleanList);
       } catch (err) {
         console.warn('Supabase updateAnnouncements fallback', err);
       }
     }
-    setLocalData(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, list);
+    setLocalData(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, cleanList);
   },
 
   // BANNERS
@@ -775,7 +863,14 @@ export const storeService = {
 
   async createBanner(bannerData: Omit<Banner, 'id'>): Promise<Banner> {
     const newBanner: Banner = {
-      ...bannerData,
+      title: sanitizePlainText(bannerData.title, { allowNewlines: false }),
+      description: bannerData.description ? sanitizePlainText(bannerData.description, { allowNewlines: false }) : '',
+      tag: bannerData.tag ? sanitizePlainText(bannerData.tag, { allowNewlines: false }) : '',
+      image_url: sanitizeUrl(bannerData.image_url),
+      button_text: bannerData.button_text ? sanitizePlainText(bannerData.button_text, { allowNewlines: false }) : 'VER MÁS',
+      button_url: bannerData.button_url ? sanitizePlainText(bannerData.button_url, { allowNewlines: false }) : '/productos',
+      active: bannerData.active !== false,
+      sort_order: sanitizeNumber(bannerData.sort_order, 1),
       id: 'ban-' + Date.now(),
     };
     if (isSupabaseConfigured && supabase) {
@@ -793,9 +888,19 @@ export const storeService = {
   },
 
   async updateBanner(id: string, updates: Partial<Banner>): Promise<Banner> {
+    const cleanUpdates: Partial<Banner> = {};
+    if (updates.title !== undefined) cleanUpdates.title = sanitizePlainText(updates.title, { allowNewlines: false });
+    if (updates.description !== undefined) cleanUpdates.description = sanitizePlainText(updates.description, { allowNewlines: false });
+    if (updates.tag !== undefined) cleanUpdates.tag = sanitizePlainText(updates.tag, { allowNewlines: false });
+    if (updates.image_url !== undefined) cleanUpdates.image_url = sanitizeUrl(updates.image_url);
+    if (updates.button_text !== undefined) cleanUpdates.button_text = sanitizePlainText(updates.button_text, { allowNewlines: false });
+    if (updates.button_url !== undefined) cleanUpdates.button_url = sanitizePlainText(updates.button_url, { allowNewlines: false });
+    if (updates.active !== undefined) cleanUpdates.active = Boolean(updates.active);
+    if (updates.sort_order !== undefined) cleanUpdates.sort_order = sanitizeNumber(updates.sort_order, 1);
+
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase.from('banners').update(updates).eq('id', id).select().single();
+        const { data, error } = await supabase.from('banners').update(cleanUpdates).eq('id', id).select().single();
         if (!error && data) return data as Banner;
       } catch (err) {
         console.warn('Supabase updateBanner fallback', err);
@@ -804,7 +909,7 @@ export const storeService = {
     const list = getLocalData<Banner[]>(LOCAL_STORAGE_KEYS.BANNERS, INITIAL_BANNERS);
     const index = list.findIndex((b) => b.id === id);
     if (index === -1) throw new Error('Banner no encontrado');
-    list[index] = { ...list[index], ...updates };
+    list[index] = { ...list[index], ...cleanUpdates };
     setLocalData(LOCAL_STORAGE_KEYS.BANNERS, list);
     return list[index];
   },
@@ -823,14 +928,25 @@ export const storeService = {
   },
 
   async updateBanners(list: Banner[]): Promise<void> {
+    const cleanList = list.map((b) => ({
+      ...b,
+      title: sanitizePlainText(b.title, { allowNewlines: false }),
+      description: b.description ? sanitizePlainText(b.description, { allowNewlines: false }) : '',
+      tag: b.tag ? sanitizePlainText(b.tag, { allowNewlines: false }) : '',
+      image_url: sanitizeUrl(b.image_url),
+      button_text: b.button_text ? sanitizePlainText(b.button_text, { allowNewlines: false }) : 'VER MÁS',
+      button_url: b.button_url ? sanitizePlainText(b.button_url, { allowNewlines: false }) : '/productos',
+      active: Boolean(b.active),
+      sort_order: sanitizeNumber(b.sort_order, 1),
+    }));
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('banners').upsert(list);
+        await supabase.from('banners').upsert(cleanList);
       } catch (err) {
         console.warn('Supabase updateBanners fallback', err);
       }
     }
-    setLocalData(LOCAL_STORAGE_KEYS.BANNERS, list);
+    setLocalData(LOCAL_STORAGE_KEYS.BANNERS, cleanList);
   },
 
   // SETTINGS
@@ -854,11 +970,27 @@ export const storeService = {
   },
 
   async updateStoreSettings(settings: StoreSettings): Promise<StoreSettings> {
+    const cleanSettings: StoreSettings = {
+      store_name: sanitizePlainText(settings.store_name, { allowNewlines: false }),
+      whatsapp: sanitizePhone(settings.whatsapp),
+      phone: sanitizePhone(settings.phone),
+      email: sanitizeEmail(settings.email),
+      address: sanitizePlainText(settings.address, { allowNewlines: false }),
+      city: sanitizePlainText(settings.city, { allowNewlines: false }),
+      department: sanitizePlainText(settings.department, { allowNewlines: false }),
+      schedule: sanitizePlainText(settings.schedule || 'Lunes a Sábado: 8:00 AM - 7:00 PM', { allowNewlines: false }),
+      instagram: settings.instagram ? sanitizePlainText(settings.instagram, { allowNewlines: false }) : '',
+      facebook: settings.facebook ? sanitizePlainText(settings.facebook, { allowNewlines: false }) : '',
+      shipping_cost: sanitizeNumber(settings.shipping_cost, 12000),
+      free_shipping_from: sanitizeNumber(settings.free_shipping_from, 150000),
+      whatsapp_custom_message: sanitizePlainText(settings.whatsapp_custom_message || 'Hola Las 3YR, quiero realizar un pedido', { allowNewlines: true }),
+      announcement_text: settings.announcement_text ? sanitizePlainText(settings.announcement_text, { allowNewlines: false }) : '',
+    };
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
           .from('store_settings')
-          .upsert({ ...settings, updated_at: new Date().toISOString() })
+          .upsert({ ...cleanSettings, updated_at: new Date().toISOString() })
           .select()
           .single();
         if (!error && data) return data as StoreSettings;
@@ -866,13 +998,13 @@ export const storeService = {
         console.warn('Supabase updateStoreSettings fallback', err);
       }
     }
-    setLocalData(LOCAL_STORAGE_KEYS.SETTINGS, settings);
-    return settings;
+    setLocalData(LOCAL_STORAGE_KEYS.SETTINGS, cleanSettings);
+    return cleanSettings;
   },
 
   // NEWSLETTER
   async subscribeNewsletter(email: string): Promise<{ success: boolean; message: string }> {
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = sanitizeEmail(email);
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return { success: false, message: 'Por favor ingresa un correo electrónico válido.' };
     }
@@ -918,7 +1050,10 @@ export const storeService = {
   // CONTACT MESSAGE
   async sendContactMessage(msg: Omit<ContactMessage, 'id' | 'created_at'>): Promise<boolean> {
     const newMessage: ContactMessage = {
-      ...msg,
+      name: sanitizePlainText(msg.name, { allowNewlines: false }),
+      email: sanitizeEmail(msg.email),
+      phone: sanitizePhone(msg.phone || ''),
+      message: sanitizePlainText(msg.message, { allowNewlines: true, maxLength: 2000 }),
       id: 'msg-' + Date.now(),
       created_at: new Date().toISOString(),
       read: false,

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MessageCircle, Phone, Mail, MapPin, Clock, Send, CheckCircle2 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { storeService } from '../services/storeService';
+import { sanitizePlainText, sanitizeEmail, sanitizePhone } from '../lib/sanitize';
 
 export const ContactPage: React.FC = () => {
   const { settings, showToast } = useStore();
@@ -11,13 +12,23 @@ export const ContactPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.email || !formData.message) {
+    const cleanName = sanitizePlainText(formData.name, { allowNewlines: false, maxLength: 100 });
+    const cleanEmail = sanitizeEmail(formData.email);
+    const cleanPhone = sanitizePhone(formData.phone);
+    const cleanMessage = sanitizePlainText(formData.message, { allowNewlines: true, maxLength: 2000 });
+
+    if (!cleanName || !cleanEmail || !cleanMessage) {
       showToast('Por favor completa todos los campos requeridos', 'error');
       return;
     }
 
     setLoading(true);
-    const success = await storeService.sendContactMessage(formData);
+    const success = await storeService.sendContactMessage({
+      name: cleanName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      message: cleanMessage,
+    });
     setLoading(false);
 
     if (success) {
@@ -143,7 +154,7 @@ export const ContactPage: React.FC = () => {
                         type="text"
                         required
                         value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        onChange={(e) => setFormData({ ...formData, name: sanitizePlainText(e.target.value, { allowNewlines: false, maxLength: 100 }) })}
                         placeholder="Ej. Sandra Pérez"
                         className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs sm:text-sm py-2.5 px-3.5 outline-none focus:border-[#D83173] focus:bg-white transition"
                       />
@@ -157,7 +168,7 @@ export const ContactPage: React.FC = () => {
                         type="email"
                         required
                         value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        onChange={(e) => setFormData({ ...formData, email: sanitizeEmail(e.target.value) })}
                         placeholder="correo@ejemplo.com"
                         className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs sm:text-sm py-2.5 px-3.5 outline-none focus:border-[#D83173] focus:bg-white transition"
                       />
@@ -171,7 +182,7 @@ export const ContactPage: React.FC = () => {
                     <input
                       type="tel"
                       value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, phone: sanitizePhone(e.target.value) })}
                       placeholder="Ej. +57 300 123 4567"
                       className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs sm:text-sm py-2.5 px-3.5 outline-none focus:border-[#D83173] focus:bg-white transition"
                     />
@@ -185,7 +196,7 @@ export const ContactPage: React.FC = () => {
                       required
                       rows={4}
                       value={formData.message}
-                      onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, message: sanitizePlainText(e.target.value, { allowNewlines: true, maxLength: 2000 }) })}
                       placeholder="Escribe aquí tu consulta sobre productos, pedidos o asesoría..."
                       className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs sm:text-sm py-2.5 px-3.5 outline-none focus:border-[#D83173] focus:bg-white transition resize-none"
                     />

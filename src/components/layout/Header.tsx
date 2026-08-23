@@ -26,6 +26,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
 import { AnnouncementBar } from './AnnouncementBar';
 import { InstallAppButton } from '../common/PWAInstallPrompt';
+import { sanitizeSearchQuery } from '../../lib/sanitize';
 
 export const Header: React.FC = () => {
   const navigate = useNavigate();
@@ -74,8 +75,9 @@ export const Header: React.FC = () => {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchTerm.trim()) {
-      navigate(`/productos?search=${encodeURIComponent(searchTerm.trim())}`);
+    const cleanTerm = sanitizeSearchQuery(searchTerm);
+    if (cleanTerm) {
+      navigate(`/productos?search=${encodeURIComponent(cleanTerm)}`);
       setSearchTerm('');
       setIsMobileMenuOpen(false);
     }
@@ -128,7 +130,7 @@ export const Header: React.FC = () => {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => setSearchTerm(sanitizeSearchQuery(e.target.value))}
               placeholder="¿Qué producto buscas hoy?"
               className="w-full bg-[#F7F4EF] hover:bg-[#F2EEE7] focus:bg-white text-[#183B2B] text-sm rounded-full pl-5 pr-11 py-2.5 outline-none border border-transparent focus:border-[#D83173]/40 focus:ring-2 focus:ring-[#D83173]/10 transition-all placeholder:text-[#8D9B91]"
             />
@@ -192,7 +194,7 @@ export const Header: React.FC = () => {
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(sanitizeSearchQuery(e.target.value))}
             placeholder="¿Qué producto buscas hoy?"
             className="w-full bg-[#F7F4EF] text-[#183B2B] text-sm rounded-full pl-4 pr-10 py-2 outline-none border border-transparent focus:border-[#D83173]/40 focus:ring-1 focus:ring-[#D83173]/20 transition placeholder:text-[#8D9B91]"
           />

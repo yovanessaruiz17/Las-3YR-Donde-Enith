@@ -6,15 +6,16 @@ import { storeService } from '../services/storeService';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/product/ProductCard';
 import { SEOHead } from '../components/common/SEOHead';
+import { sanitizeSearchQuery, sanitizePlainText } from '../lib/sanitize';
 
 export const Products: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { categories, brands } = useStore();
 
-  const searchQuery = searchParams.get('search') || '';
-  const categoryParam = searchParams.get('categoria') || '';
-  const brandParam = searchParams.get('marca') || '';
-  const sortParam = searchParams.get('orden') || 'popular';
+  const searchQuery = sanitizeSearchQuery(searchParams.get('search') || '');
+  const categoryParam = sanitizePlainText(searchParams.get('categoria') || '');
+  const brandParam = sanitizePlainText(searchParams.get('marca') || '');
+  const sortParam = sanitizePlainText(searchParams.get('orden') || 'popular');
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);

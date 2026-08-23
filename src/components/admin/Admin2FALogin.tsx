@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
 import { isSupabaseConfigured } from '../../lib/supabase';
+import { sanitizeEmail } from '../../lib/sanitize';
 
 export const Admin2FALogin: React.FC = () => {
   const { loginAdminWithCredentials } = useAuth();
