@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Package,
@@ -38,6 +38,8 @@ import {
   ArrowUpRight,
   BarChart3,
   Image as ImageIcon,
+  Search,
+  Filter,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../context/AuthContext';
@@ -72,8 +74,15 @@ export const AdminDashboard: React.FC = () => {
   const [adminAnnouncements, setAdminAnnouncements] = useState<Announcement[]>([]);
 
   // Search/Filters
+  const [productSearch, setProductSearch] = useState('');
+  const [productBrandFilter, setProductBrandFilter] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('');
+  const [productStatusFilter, setProductStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [categorySearch, setCategorySearch] = useState('');
   const [brandSearch, setBrandSearch] = useState('');
+
+  // Refs for scrolling
+  const productFormRef = useRef<HTMLDivElement>(null);
 
   // Modals / Editors
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
@@ -240,6 +249,57 @@ export const AdminDashboard: React.FC = () => {
   const totalUnitsInStock = products.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
   const activeProductsCount = products.filter((p) => p.active !== false).length;
   const inactiveProductsCount = products.filter((p) => p.active === false).length;
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.toLowerCase().trim();
+    return products.filter((p) => {
+      const matchSearch =
+        !q ||
+        (p.name && p.name.toLowerCase().includes(q)) ||
+        (p.brand_name && p.brand_name.toLowerCase().includes(q)) ||
+        (p.category_name && p.category_name.toLowerCase().includes(q)) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
+        (p.id && p.id.toLowerCase().includes(q));
+
+      const matchBrand = !productBrandFilter || p.brand_name?.toLowerCase() === productBrandFilter.toLowerCase();
+      const matchCategory = !productCategoryFilter || p.category_name?.toLowerCase() === productCategoryFilter.toLowerCase();
+      const matchStatus =
+        productStatusFilter === 'all'
+          ? true
+          : productStatusFilter === 'active'
+          ? p.active !== false
+          : p.active === false;
+
+      return matchSearch && matchBrand && matchCategory && matchStatus;
+    });
+  }, [products, productSearch, productBrandFilter, productCategoryFilter, productStatusFilter]);
+
+  const handleStartEditProduct = (p: Product) => {
+    setEditingProduct({ ...p });
+    setTimeout(() => {
+      if (productFormRef.current) {
+        productFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 60);
+  };
+
+  const handleStartNewProduct = () => {
+    setEditingProduct({
+      name: '',
+      price: 45000,
+      active: true,
+      featured: false,
+      brand_name: adminBrands[0]?.name || 'Natura',
+      category_name: adminCategories[0]?.name || 'Belleza',
+      main_image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
+      description: '',
+    });
+    setTimeout(() => {
+      if (productFormRef.current) {
+        productFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 60);
+  };
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -746,16 +806,7 @@ export const AdminDashboard: React.FC = () => {
                 </h3>
                 <button
                   onClick={() => {
-                    setEditingProduct({
-                      name: '',
-                      price: 50000,
-                      active: true,
-                      featured: false,
-                      brand_name: adminBrands[0]?.name || 'Natura',
-                      category_name: adminCategories[0]?.name || 'Belleza',
-                      main_image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
-                      description: '',
-                    });
+                    handleStartNewProduct();
                     setActiveTab('products');
                   }}
                   className="w-full py-2.5 rounded-2xl bg-[#D83173] text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-[#C52B66] transition shadow-xs cursor-pointer"
@@ -910,18 +961,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               <button
-                onClick={() =>
-                  setEditingProduct({
-                    name: '',
-                    price: 45000,
-                    active: true,
-                    featured: false,
-                    brand_name: adminBrands[0]?.name || 'Natura',
-                    category_name: adminCategories[0]?.name || 'Belleza',
-                    main_image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
-                    description: '',
-                  })
-                }
+                onClick={handleStartNewProduct}
                 className="px-5 py-2.5 rounded-full bg-[#D83173] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#C52B66] transition flex items-center gap-2 shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -929,16 +969,31 @@ export const AdminDashboard: React.FC = () => {
               </button>
             </div>
 
-            {/* Product Edit / Add Modal */}
+            {/* Product Edit / Add Form (Anchored with ref for auto-scroll) */}
             {editingProduct && (
-              <div className="bg-[#FAF8F5] rounded-2xl p-6 border border-[#E4DDD3] space-y-4 animate-in fade-in duration-150">
+              <div
+                ref={productFormRef}
+                id="admin-product-form"
+                className="bg-[#FAF8F5] rounded-2xl p-6 border border-[#E4DDD3] space-y-4 animate-in fade-in duration-150 scroll-mt-6 shadow-xs"
+              >
                 <div className="flex items-center justify-between">
-                  <h3 className="font-serif text-lg font-bold text-[#163E2B]">
-                    {editingProduct.id ? 'Editar Producto' : 'Crear Nuevo Producto'}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-[#D83173]/10 text-[#D83173] flex items-center justify-center font-bold">
+                      {editingProduct.id ? <Edit2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    </div>
+                    <div>
+                      <h3 className="font-serif text-lg font-bold text-[#163E2B]">
+                        {editingProduct.id ? 'Editar Producto' : 'Crear Nuevo Producto'}
+                      </h3>
+                      {editingProduct.id && (
+                        <p className="text-[11px] text-stone-500 font-mono">ID: {editingProduct.id}</p>
+                      )}
+                    </div>
+                  </div>
                   <button
                     onClick={() => setEditingProduct(null)}
-                    className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
+                    className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer rounded-lg hover:bg-stone-200 transition"
+                    title="Cerrar formulario"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1081,74 +1136,192 @@ export const AdminDashboard: React.FC = () => {
               </div>
             )}
 
-            {/* Products Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[#EFE9E1] text-stone-400 font-bold uppercase text-[10px]">
-                    <th className="pb-3">Foto</th>
-                    <th className="pb-3">Producto</th>
-                    <th className="pb-3">Marca / Categoría</th>
-                    <th className="pb-3">Stock</th>
-                    <th className="pb-3">Precio</th>
-                    <th className="pb-3">Estado</th>
-                    <th className="pb-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F0EAE1]">
-                  {products.map((p) => (
-                    <tr key={p.id} className="hover:bg-[#FAF8F5]">
-                      <td className="py-2.5">
-                        <img
-                          src={p.main_image}
-                          alt=""
-                          className="w-10 h-10 rounded-lg object-cover border border-[#EFE9E1]"
-                        />
-                      </td>
-                      <td className="py-2.5 font-bold text-[#163E2B]">
-                        {p.name}
-                      </td>
-                      <td className="py-2.5 text-stone-600">
-                        <span className="font-semibold text-[#163E2B]">{p.brand_name}</span> • {p.category_name}
-                      </td>
-                      <td className="py-2.5 font-semibold text-stone-600">
-                        {p.stock || 1} un.
-                      </td>
-                      <td className="py-2.5 font-bold text-[#163E2B]">
-                        {storeService.formatCurrency(p.price)}
-                      </td>
-                      <td className="py-2.5">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            p.active !== false
-                              ? 'bg-[#E9F3EC] text-[#163E2B]'
-                              : 'bg-rose-100 text-rose-700'
-                          }`}
-                        >
-                          {p.active !== false ? 'Activo' : 'Inactivo'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 text-right space-x-2">
-                        <button
-                          onClick={() => setEditingProduct(p)}
-                          className="p-1.5 rounded-lg border border-[#E4DDD3] text-[#163E2B] hover:bg-white cursor-pointer"
-                          title="Editar"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduct(p.id, p.name)}
-                          className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Product Search & Filters for Salesperson / Admin */}
+            <div className="bg-[#FAF8F5] border border-[#E4DDD3] rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-2xs">
+              <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+                {/* Search Bar Input */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(sanitizePlainText(e.target.value))}
+                    placeholder="Buscar producto por nombre, marca o categoría..."
+                    className="w-full bg-white border border-[#E4DDD3] rounded-xl text-xs py-2.5 pl-10 pr-9 outline-none focus:border-[#D83173] text-[#163E2B] transition placeholder:text-stone-400 font-medium"
+                  />
+                  {productSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setProductSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
+                      title="Limpiar búsqueda"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Selects */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={productBrandFilter}
+                    onChange={(e) => setProductBrandFilter(e.target.value)}
+                    className="bg-white border border-[#E4DDD3] rounded-xl text-xs font-semibold text-[#163E2B] py-2 px-3 outline-none focus:border-[#D83173] cursor-pointer"
+                  >
+                    <option value="">Todas las marcas</option>
+                    {adminBrands.map((b) => (
+                      <option key={b.id} value={b.name}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={productCategoryFilter}
+                    onChange={(e) => setProductCategoryFilter(e.target.value)}
+                    className="bg-white border border-[#E4DDD3] rounded-xl text-xs font-semibold text-[#163E2B] py-2 px-3 outline-none focus:border-[#D83173] cursor-pointer"
+                  >
+                    <option value="">Todas las categorías</option>
+                    {adminCategories.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={productStatusFilter}
+                    onChange={(e) => setProductStatusFilter(e.target.value as any)}
+                    className="bg-white border border-[#E4DDD3] rounded-xl text-xs font-semibold text-[#163E2B] py-2 px-3 outline-none focus:border-[#D83173] cursor-pointer"
+                  >
+                    <option value="all">Todos los estados</option>
+                    <option value="active">Solo Activos</option>
+                    <option value="inactive">Solo Inactivos</option>
+                  </select>
+
+                  {(productSearch || productBrandFilter || productCategoryFilter || productStatusFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductSearch('');
+                        setProductBrandFilter('');
+                        setProductCategoryFilter('');
+                        setProductStatusFilter('all');
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition cursor-pointer"
+                    >
+                      Limpiar filtros
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Status information footer */}
+              <div className="flex flex-wrap items-center justify-between text-[11px] text-stone-500 font-medium px-1 gap-2 pt-1 border-t border-[#EFE9E1]">
+                <span>
+                  Mostrando <strong className="text-[#163E2B]">{filteredProducts.length}</strong> de <strong className="text-[#163E2B]">{products.length}</strong> productos en inventario
+                </span>
+                {productSearch && (
+                  <span className="text-[#D83173] font-semibold bg-[#FAF0F4] px-2 py-0.5 rounded">
+                    Filtrando por: "{productSearch}"
+                  </span>
+                )}
+              </div>
             </div>
+
+            {/* Products Table or Empty Search Results */}
+            {filteredProducts.length === 0 ? (
+              <div className="text-center py-12 px-4 border border-dashed border-[#E4DDD3] rounded-2xl bg-[#FAF8F5]">
+                <Search className="w-10 h-10 text-stone-400 mx-auto mb-3 opacity-50" />
+                <p className="text-sm font-bold text-[#163E2B]">No se encontraron productos</p>
+                <p className="text-xs text-stone-500 mt-1 mb-4 max-w-sm mx-auto">
+                  {productSearch
+                    ? `No hay ningún producto que coincida con "${productSearch}". Verifica la ortografía o intenta buscar por otra palabra clave.`
+                    : 'No hay productos que cumplan con los filtros seleccionados.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductSearch('');
+                    setProductBrandFilter('');
+                    setProductCategoryFilter('');
+                    setProductStatusFilter('all');
+                  }}
+                  className="px-4 py-2 bg-[#D83173] text-white text-xs font-bold rounded-xl hover:bg-[#C52B66] cursor-pointer shadow-xs"
+                >
+                  Restablecer búsqueda
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#EFE9E1] text-stone-400 font-bold uppercase text-[10px]">
+                      <th className="pb-3">Foto</th>
+                      <th className="pb-3">Producto</th>
+                      <th className="pb-3">Marca / Categoría</th>
+                      <th className="pb-3">Stock</th>
+                      <th className="pb-3">Precio</th>
+                      <th className="pb-3">Estado</th>
+                      <th className="pb-3 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F0EAE1]">
+                    {filteredProducts.map((p) => (
+                      <tr key={p.id} className="hover:bg-[#FAF8F5] transition-colors">
+                        <td className="py-2.5">
+                          <img
+                            src={p.main_image}
+                            alt=""
+                            className="w-10 h-10 rounded-lg object-cover border border-[#EFE9E1]"
+                          />
+                        </td>
+                        <td className="py-2.5 font-bold text-[#163E2B]">
+                          {p.name}
+                        </td>
+                        <td className="py-2.5 text-stone-600">
+                          <span className="font-semibold text-[#163E2B]">{p.brand_name}</span> • {p.category_name}
+                        </td>
+                        <td className="py-2.5 font-semibold text-stone-600">
+                          {p.stock || 1} un.
+                        </td>
+                        <td className="py-2.5 font-bold text-[#163E2B]">
+                          {storeService.formatCurrency(p.price)}
+                        </td>
+                        <td className="py-2.5">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              p.active !== false
+                                ? 'bg-[#E9F3EC] text-[#163E2B]'
+                                : 'bg-rose-100 text-rose-700'
+                            }`}
+                          >
+                            {p.active !== false ? 'Activo' : 'Inactivo'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-right space-x-2">
+                          <button
+                            onClick={() => handleStartEditProduct(p)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E4DDD3] bg-white text-[#163E2B] hover:bg-[#FAF8F5] hover:border-[#D83173] hover:text-[#D83173] font-semibold text-[11px] transition shadow-2xs cursor-pointer"
+                            title="Editar este producto (desplaza al formulario arriba)"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProduct(p.id, p.name)}
+                            className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="Eliminar producto"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

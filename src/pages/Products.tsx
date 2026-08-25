@@ -225,28 +225,37 @@ export const Products: React.FC = () => {
           </div>
         )}
 
-        {/* Pagination matching screenshot `< 1 2 3 ... >` */}
+        {/* Responsive Pagination with generous touch targets */}
         {totalPages > 1 && (
-          <div className="mt-12 flex items-center justify-center gap-2">
+          <div className="mt-12 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 px-2">
             <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onClick={() => {
+                setCurrentPage((p) => Math.max(1, p - 1));
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               disabled={currentPage === 1}
               aria-label="Página anterior"
-              className="p-2 rounded-xl border border-[#E4DDD3] bg-white text-[#163E2B] hover:bg-[#FAF8F5] disabled:opacity-40 transition cursor-pointer"
+              className="min-w-[44px] min-h-[44px] sm:min-w-[42px] sm:min-h-[42px] px-3 rounded-2xl border border-[#E4DDD3] bg-white text-[#163E2B] hover:bg-[#FAF8F5] active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition flex items-center justify-center shadow-2xs cursor-pointer"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-5 h-5 text-[#163E2B]" />
             </button>
 
             {[...Array(totalPages)].map((_, i) => {
               const pageNum = i + 1;
+              const isActive = currentPage === pageNum;
               return (
                 <button
                   key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
-                  className={`w-9 h-9 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    currentPage === pageNum
-                      ? 'bg-[#D83173] text-white shadow-xs'
-                      : 'bg-white border border-[#E4DDD3] text-[#163E2B] hover:bg-[#FAF8F5]'
+                  onClick={() => {
+                    setCurrentPage(pageNum);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  aria-label={`Ir a página ${pageNum}`}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`min-w-[44px] min-h-[44px] sm:min-w-[42px] sm:min-h-[42px] px-3.5 rounded-2xl text-sm font-bold transition flex items-center justify-center active:scale-95 shadow-2xs cursor-pointer ${
+                    isActive
+                      ? 'bg-[#D83173] text-white shadow-xs scale-105'
+                      : 'bg-white border border-[#E4DDD3] text-[#163E2B] hover:bg-[#FAF8F5] hover:border-[#D83173]'
                   }`}
                 >
                   {pageNum}
@@ -255,12 +264,15 @@ export const Products: React.FC = () => {
             })}
 
             <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => {
+                setCurrentPage((p) => Math.min(totalPages, p + 1));
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               disabled={currentPage === totalPages}
               aria-label="Página siguiente"
-              className="p-2 rounded-xl border border-[#E4DDD3] bg-white text-[#163E2B] hover:bg-[#FAF8F5] disabled:opacity-40 transition cursor-pointer"
+              className="min-w-[44px] min-h-[44px] sm:min-w-[42px] sm:min-h-[42px] px-3 rounded-2xl border border-[#E4DDD3] bg-white text-[#163E2B] hover:bg-[#FAF8F5] active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition flex items-center justify-center shadow-2xs cursor-pointer"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-5 h-5 text-[#163E2B]" />
             </button>
           </div>
         )}
