@@ -86,15 +86,21 @@ export const Admin2FALogin: React.FC = () => {
             </p>
           </div>
 
-          {/* Database connection badge */}
-          <div className="flex items-center justify-center gap-2 text-[11px] bg-[#FAF8F5] py-1.5 px-3 rounded-full border border-stone-200 text-stone-600">
-            <Database className="w-3.5 h-3.5 text-[#163E2B]" />
-            <span>
-              Seguridad:{' '}
-              <strong className="text-[#163E2B]">
-                {isSupabaseConfigured ? 'Base de Datos Supabase (Rol Admin + 2FA)' : 'Cifrado Local + 2FA'}
-              </strong>
-            </span>
+          {/* Database connection badge & 15-Day Session Info */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-center gap-2 text-[11px] bg-[#FAF8F5] py-1.5 px-3 rounded-full border border-stone-200 text-stone-600">
+              <Database className="w-3.5 h-3.5 text-[#163E2B]" />
+              <span>
+                Seguridad:{' '}
+                <strong className="text-[#163E2B]">
+                  {isSupabaseConfigured ? 'Base de Datos Supabase (Rol Admin + 2FA)' : 'Cifrado Local + 2FA'}
+                </strong>
+              </span>
+            </div>
+            <div className="flex items-center justify-center gap-1.5 text-[11px] bg-[#EAF2ED] py-1 px-3 rounded-full text-[#163E2B] font-semibold border border-[#C5DEC9]">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#25D366] shrink-0" />
+              <span>Sesión activa recordada por 15 días continuos</span>
+            </div>
           </div>
 
           {/* Error Message Box */}

@@ -3,11 +3,58 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Profile, UserRole } from '../types';
 import { adminAuthService } from '../services/adminAuthService';
 
+export const ADMIN_SESSION_DURATION_DAYS = 15;
+export const ADMIN_SESSION_DURATION_MS = 15 * 24 * 60 * 60 * 1000; // 15 days in ms
+export const ADMIN_SESSION_KEY = 'las3yr_admin_session_v1';
+
+export interface AdminSessionInfo {
+  email: string;
+  loginTimestamp: number;
+  expiresAt: number;
+  verifiedWith2FA: boolean;
+}
+
+export function getAdminSessionInfo(): AdminSessionInfo | null {
+  try {
+    const raw = localStorage.getItem(ADMIN_SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function saveAdminSession(email: string): AdminSessionInfo {
+  const now = Date.now();
+  const session: AdminSessionInfo = {
+    email,
+    loginTimestamp: now,
+    expiresAt: now + ADMIN_SESSION_DURATION_MS,
+    verifiedWith2FA: true,
+  };
+  localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+  return session;
+}
+
+export function isSessionExpired(session: AdminSessionInfo | null): boolean {
+  if (!session || !session.expiresAt) return true;
+  return Date.now() > session.expiresAt;
+}
+
+export function calculateDaysRemaining(session: AdminSessionInfo | null): number {
+  if (!session || !session.expiresAt) return 0;
+  const diff = session.expiresAt - Date.now();
+  if (diff <= 0) return 0;
+  return Math.ceil(diff / (24 * 60 * 60 * 1000));
+}
+
 interface AuthContextType {
   user: Profile | null;
   role: UserRole;
   isAdmin: boolean;
   loading: boolean;
+  adminSession: AdminSessionInfo | null;
+  sessionDaysRemaining: number;
   signInWithEmail: (email: string, pass: string) => Promise<{ error: Error | null }>;
   signUpWithEmail: (email: string, pass: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -18,15 +65,74 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const DEMO_USER_KEY = 'las3yr_session_user_v2';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [adminSession, setAdminSessionState] = useState<AdminSessionInfo | null>(() => {
+    return getAdminSessionInfo();
+  });
+
   const [user, setUser] = useState<Profile | null>(() => {
     try {
       const saved = localStorage.getItem(DEMO_USER_KEY);
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed: Profile = JSON.parse(saved);
+
+      // If user is admin, enforce the 15-day session limit
+      if (parsed.role === 'admin') {
+        const session = getAdminSessionInfo();
+        if (!session) {
+          // If session wasn't tracked yet, initialize 15-day session from now
+          const newSession = saveAdminSession(parsed.email);
+          setAdminSessionState(newSession);
+          return parsed;
+        }
+        if (isSessionExpired(session)) {
+          // 15 days have passed! Expire admin session
+          localStorage.removeItem(DEMO_USER_KEY);
+          localStorage.removeItem(ADMIN_SESSION_KEY);
+          return null;
+        }
+      }
+
+      return parsed;
     } catch {
       return null;
     }
   });
+
   const [loading, setLoading] = useState(true);
+
+  // Periodic check to auto-expire session when 15 days elapse
+  useEffect(() => {
+    const checkExpiry = () => {
+      if (user?.role === 'admin') {
+        const session = getAdminSessionInfo();
+        if (session && isSessionExpired(session)) {
+          console.info('La sesión de administrador de 15 días ha expirado.');
+          setUser(null);
+          setAdminSessionState(null);
+          localStorage.removeItem(DEMO_USER_KEY);
+          localStorage.removeItem(ADMIN_SESSION_KEY);
+          if (isSupabaseConfigured && supabase) {
+            supabase.auth.signOut().catch(() => {});
+          }
+        }
+      }
+    };
+
+    checkExpiry();
+    // Check every hour or when tab becomes visible
+    const interval = setInterval(checkExpiry, 60 * 60 * 1000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkExpiry();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (isSupabaseConfigured && supabase) {
@@ -43,8 +149,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (session?.user) {
           await fetchUserProfile(session.user.id, session.user.email || '');
         } else {
-          setUser(null);
-          localStorage.removeItem(DEMO_USER_KEY);
+          // Only clear if not in a valid local admin session
+          const currentAdmin = getAdminSessionInfo();
+          if (!currentAdmin || isSessionExpired(currentAdmin)) {
+            setUser(null);
+            setAdminSessionState(null);
+            localStorage.removeItem(DEMO_USER_KEY);
+            localStorage.removeItem(ADMIN_SESSION_KEY);
+          }
           setLoading(false);
         }
       });
@@ -67,6 +179,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (!error && data) {
+        const isUserAdmin = data.role === 'admin';
+        if (isUserAdmin) {
+          const session = getAdminSessionInfo();
+          if (session && isSessionExpired(session)) {
+            // Expired 15-day session
+            await supabase.auth.signOut();
+            setUser(null);
+            setAdminSessionState(null);
+            localStorage.removeItem(DEMO_USER_KEY);
+            localStorage.removeItem(ADMIN_SESSION_KEY);
+            setLoading(false);
+            return;
+          }
+          if (!session) {
+            const newSession = saveAdminSession(data.email || email);
+            setAdminSessionState(newSession);
+          }
+        }
+
         const profile: Profile = {
           id: data.id,
           email: data.email || email,
@@ -194,10 +325,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('Supabase signout note:', e);
+      }
     }
     setUser(null);
+    setAdminSessionState(null);
     localStorage.removeItem(DEMO_USER_KEY);
+    localStorage.removeItem(ADMIN_SESSION_KEY);
   };
 
   const loginAdminWithCredentials = async (
@@ -210,13 +347,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { error: error || new Error('No se pudo verificar la cuenta de administrador.') };
     }
 
+    // Set user profile & establish 15-day maximum session
     setUser(profile);
     localStorage.setItem(DEMO_USER_KEY, JSON.stringify(profile));
+    const newSession = saveAdminSession(profile.email);
+    setAdminSessionState(newSession);
+
     return { error: null };
   };
 
   const role: UserRole = user?.role === 'admin' ? 'admin' : 'customer';
   const isAdmin = role === 'admin';
+  const sessionDaysRemaining = calculateDaysRemaining(adminSession);
 
   return (
     <AuthContext.Provider
@@ -225,6 +367,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role,
         isAdmin,
         loading,
+        adminSession,
+        sessionDaysRemaining,
         signInWithEmail,
         signUpWithEmail,
         signOut,
@@ -243,3 +387,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

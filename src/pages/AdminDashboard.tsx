@@ -40,6 +40,8 @@ import {
   Image as ImageIcon,
   Search,
   Filter,
+  Clock,
+  Calendar,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../context/AuthContext';
@@ -54,7 +56,7 @@ import { sanitizePlainText, sanitizeEmail, sanitizeUrl } from '../lib/sanitize';
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, isAdmin, signOut, sessionDaysRemaining, adminSession } = useAuth();
   const { settings, updateSettings, categories: ctxCategories, brands: ctxBrands, banners: ctxBanners, refreshStore, showToast } = useStore();
 
   const [activeTab, setActiveTab] = useState<
@@ -620,6 +622,17 @@ export const AdminDashboard: React.FC = () => {
               <Database className="w-3.5 h-3.5 text-[#F48FB1]" />
               <span>
                 {isSupabaseConfigured ? 'Supabase Conectado' : 'Modo Local Activo'}
+              </span>
+            </div>
+
+            {/* 15-Day Session Status Indicator */}
+            <div
+              className="hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-[11px] text-[#E8F0EA] border border-white/15"
+              title="La sesión se mantiene activa por un máximo de 15 días continuos tras verificar con 2FA"
+            >
+              <Clock className="w-3.5 h-3.5 text-[#A3E635]" />
+              <span>
+                Sesión: <strong className="text-white">{sessionDaysRemaining > 0 ? `${sessionDaysRemaining} días` : 'Expira hoy'}</strong>
               </span>
             </div>
           </div>
@@ -2280,6 +2293,70 @@ git push origin main</pre>
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* 15-Day Session Lifetime Card */}
+              <div className="bg-[#FAF6F0] p-5 sm:p-6 rounded-2xl border border-[#EBE1D5] space-y-4 text-xs text-[#163E2B]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4DDD3] pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-[#163E2B] text-[#A3E635] flex items-center justify-center">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-serif font-bold text-sm text-[#163E2B]">
+                        Duración de Sesión del Panel (Máximo 15 Días)
+                      </h4>
+                      <p className="text-[11px] text-stone-500">
+                        Cada inicio de sesión con credenciales y código 2FA se mantiene activo por 15 días continuos.
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="px-3 py-1 rounded-full bg-[#EAF2ED] text-[#163E2B] font-bold text-[11px] border border-[#C5DEC9] flex items-center gap-1.5 self-start sm:self-auto">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#25D366]" />
+                    <span>{sessionDaysRemaining > 0 ? `${sessionDaysRemaining} días restantes` : 'Expira hoy'}</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-white p-3.5 rounded-xl border border-[#E4DDD3] space-y-0.5">
+                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Vigencia</span>
+                    <p className="font-bold text-[#163E2B] text-xs">15 Días Máximo</p>
+                    <p className="text-[10px] text-stone-500">No pide 2FA constantemente.</p>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-[#E4DDD3] space-y-0.5">
+                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Inicio de Sesión</span>
+                    <p className="font-bold text-[#163E2B] text-xs">
+                      {adminSession?.loginTimestamp
+                        ? new Date(adminSession.loginTimestamp).toLocaleDateString('es-CO', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : 'Sesión activa'}
+                    </p>
+                    <p className="text-[10px] text-stone-500">Autenticado con 2FA.</p>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-[#E4DDD3] space-y-0.5">
+                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Expiración Automática</span>
+                    <p className="font-bold text-[#163E2B] text-xs">
+                      {adminSession?.expiresAt
+                        ? new Date(adminSession.expiresAt).toLocaleDateString('es-CO', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'En 15 días'}
+                    </p>
+                    <p className="text-[10px] text-stone-500">Cierre automático por seguridad.</p>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-stone-600 leading-relaxed bg-white/70 p-3 rounded-xl border border-[#E4DDD3]">
+                  🛡️ <strong>Seguridad activa:</strong> Al cumplirse los 15 días desde tu último acceso con verificación, la sesión se cerrará de forma automática y se te solicitará nuevamente ingresar el correo, la contraseña y el código de 6 dígitos de tu aplicación Authenticator para garantizar que nadie más tenga acceso a la administración.
+                </p>
               </div>
 
               {/* Admin Access Details & Info */}
