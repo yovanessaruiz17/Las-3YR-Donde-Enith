@@ -63,6 +63,22 @@ function setLocalData<T>(key: string, data: T): void {
   }
 }
 
+// Helper to communicate with central backend server API
+async function fetchApi<T>(url: string, options?: RequestInit): Promise<T | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+      ...options,
+    });
+    if (res.ok) {
+      return (await res.json()) as T;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export const storeService = {
   // PRODUCTS
   async getProducts(params?: {
@@ -76,7 +92,12 @@ export const storeService = {
   }): Promise<Product[]> {
     let rawProducts: Product[] = [];
 
-    if (isSupabaseConfigured && supabase) {
+    // 1. Central Server API First (multi-device synchronization)
+    const serverProducts = await fetchApi<Product[]>('/api/products');
+    if (serverProducts && Array.isArray(serverProducts) && serverProducts.length > 0) {
+      rawProducts = serverProducts;
+      setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, rawProducts);
+    } else if (isSupabaseConfigured && supabase) {
       try {
         let query = supabase.from('products').select('*');
 
@@ -89,8 +110,9 @@ export const storeService = {
 
         const { data, error } = await query;
 
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           rawProducts = data as Product[];
+          setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, rawProducts);
         } else if (error) {
           console.warn('Error consultando productos en Supabase, usando respaldo local:', error.message);
           rawProducts = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
@@ -448,12 +470,21 @@ export const storeService = {
 
   // CATEGORIES
   async getCategories(activeOnly = true): Promise<Category[]> {
+    const serverCats = await fetchApi<Category[]>('/api/categories');
+    if (serverCats && Array.isArray(serverCats) && serverCats.length > 0) {
+      setLocalData(LOCAL_STORAGE_KEYS.CATEGORIES, serverCats);
+      return activeOnly ? serverCats.filter((c) => c.active) : serverCats;
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         let query = supabase.from('categories').select('*').order('sort_order', { ascending: true });
         if (activeOnly) query = query.eq('active', true);
         const { data, error } = await query;
-        if (!error && data && data.length > 0) return data as Category[];
+        if (!error && data && data.length > 0) {
+          setLocalData(LOCAL_STORAGE_KEYS.CATEGORIES, data as Category[]);
+          return data as Category[];
+        }
       } catch (err) {
         console.warn('Supabase getCategories fallback', err);
       }
@@ -480,6 +511,9 @@ export const storeService = {
       id: 'cat-' + Date.now(),
       created_at: new Date().toISOString(),
     };
+
+    fetchApi('/api/categories', { method: 'POST', body: JSON.stringify(newCat) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('categories').insert([newCat]).select().single();
@@ -503,6 +537,8 @@ export const storeService = {
     if (updates.active !== undefined) cleanUpdates.active = Boolean(updates.active);
     if (updates.sort_order !== undefined) cleanUpdates.sort_order = sanitizeNumber(updates.sort_order, 1);
 
+    fetchApi(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify(cleanUpdates) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('categories').update(cleanUpdates).eq('id', id).select().single();
@@ -520,6 +556,8 @@ export const storeService = {
   },
 
   async deleteCategory(id: string): Promise<boolean> {
+    fetchApi(`/api/categories/${id}`, { method: 'DELETE' }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('categories').delete().eq('id', id);
@@ -534,17 +572,25 @@ export const storeService = {
 
   // BRANDS
   async getBrands(activeOnly = true): Promise<Brand[]> {
+    const serverBrands = await fetchApi<Brand[]>('/api/brands');
+    if (serverBrands && Array.isArray(serverBrands) && serverBrands.length > 0) {
+      setLocalData(LOCAL_STORAGE_KEYS.BRANDS, serverBrands);
+      return activeOnly ? serverBrands.filter((b) => b.active) : serverBrands;
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         let query = supabase.from('brands').select('*').order('sort_order', { ascending: true });
         if (activeOnly) query = query.eq('active', true);
         const { data, error } = await query;
-        if (!error && data && data.length > 0) return data as Brand[];
+        if (!error && data && data.length > 0) {
+          setLocalData(LOCAL_STORAGE_KEYS.BRANDS, data as Brand[]);
+          return data as Brand[];
+        }
       } catch (err) {
         console.warn('Supabase getBrands fallback', err);
       }
     }
-
     const brands = getLocalData<Brand[]>(LOCAL_STORAGE_KEYS.BRANDS, INITIAL_BRANDS);
     return activeOnly ? brands.filter((b) => b.active) : brands;
   },
@@ -566,6 +612,9 @@ export const storeService = {
       id: 'brand-' + Date.now(),
       created_at: new Date().toISOString(),
     };
+
+    fetchApi('/api/brands', { method: 'POST', body: JSON.stringify(newBrand) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('brands').insert([newBrand]).select().single();
@@ -589,6 +638,8 @@ export const storeService = {
     if (updates.active !== undefined) cleanUpdates.active = Boolean(updates.active);
     if (updates.sort_order !== undefined) cleanUpdates.sort_order = sanitizeNumber(updates.sort_order, 1);
 
+    fetchApi(`/api/brands/${id}`, { method: 'PUT', body: JSON.stringify(cleanUpdates) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('brands').update(cleanUpdates).eq('id', id).select().single();
@@ -606,6 +657,8 @@ export const storeService = {
   },
 
   async deleteBrand(id: string): Promise<boolean> {
+    fetchApi(`/api/brands/${id}`, { method: 'DELETE' }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('brands').delete().eq('id', id);
@@ -620,17 +673,50 @@ export const storeService = {
 
   // ORDERS
   async getOrders(): Promise<Order[]> {
+    // 1. Central Server API First (Real Multi-Device Synchronization)
+    const serverOrders = await fetchApi<Order[]>('/api/orders');
+    if (serverOrders && Array.isArray(serverOrders)) {
+      // Check if this device has any local order created previously that is not yet on the server
+      const localOrders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
+      const unsynced = localOrders.filter(
+        (lo) => !serverOrders.some((so) => so.id === lo.id || so.order_number === lo.order_number)
+      );
+
+      if (unsynced.length > 0) {
+        // Automatically sync pending local orders to server so all devices see them!
+        fetchApi<{ success: boolean; orders: Order[] }>('/api/orders/sync', {
+          method: 'POST',
+          body: JSON.stringify({ orders: unsynced }),
+        }).catch((e) => console.warn('Order sync error:', e));
+
+        const merged = [...unsynced, ...serverOrders].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setLocalData(LOCAL_STORAGE_KEYS.ORDERS, merged);
+        return merged;
+      }
+
+      setLocalData(LOCAL_STORAGE_KEYS.ORDERS, serverOrders);
+      return serverOrders;
+    }
+
+    // 2. Fallback to Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
           .from('orders')
           .select('*, items:order_items(*)')
           .order('created_at', { ascending: false });
-        if (!error && data) return data as Order[];
+        if (!error && data) {
+          setLocalData(LOCAL_STORAGE_KEYS.ORDERS, data as Order[]);
+          return data as Order[];
+        }
       } catch (err) {
         console.warn('Supabase getOrders fallback', err);
       }
     }
+
+    // 3. Fallback to local storage
     return getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
   },
 
@@ -675,36 +761,45 @@ export const storeService = {
       updated_at: new Date().toISOString(),
     };
 
+    // 1. Post to Server API (persists centrally for all devices)
+    const serverCreated = await fetchApi<Order>('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify(newOrder),
+    });
+
+    const finalOrder = serverCreated || newOrder;
+
+    // 2. Also try Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
           .from('orders')
           .insert([
             {
-              id: newOrder.id,
-              order_number: newOrder.order_number,
-              customer_name: newOrder.customer_name,
-              customer_email: newOrder.customer_email,
-              customer_phone: newOrder.customer_phone,
-              whatsapp: newOrder.whatsapp,
-              address: newOrder.address,
-              city: newOrder.city,
-              department: newOrder.department,
-              notes: newOrder.notes,
-              subtotal: newOrder.subtotal,
-              shipping: newOrder.shipping,
-              total: newOrder.total,
-              origin: newOrder.origin,
-              payment_method: newOrder.payment_method,
-              delivery_method: newOrder.delivery_method,
-              status: newOrder.status,
+              id: finalOrder.id,
+              order_number: finalOrder.order_number,
+              customer_name: finalOrder.customer_name,
+              customer_email: finalOrder.customer_email,
+              customer_phone: finalOrder.customer_phone,
+              whatsapp: finalOrder.whatsapp,
+              address: finalOrder.address,
+              city: finalOrder.city,
+              department: finalOrder.department,
+              notes: finalOrder.notes,
+              subtotal: finalOrder.subtotal,
+              shipping: finalOrder.shipping,
+              total: finalOrder.total,
+              origin: finalOrder.origin,
+              payment_method: finalOrder.payment_method,
+              delivery_method: finalOrder.delivery_method,
+              status: finalOrder.status,
             },
           ])
           .select()
           .single();
 
-        if (!error && data && newOrder.items.length > 0) {
-          const itemsPayload = newOrder.items.map((it) => ({
+        if (!error && data && finalOrder.items.length > 0) {
+          const itemsPayload = finalOrder.items.map((it) => ({
             order_id: data.id,
             product_id: it.product_id,
             product_name: it.product_name,
@@ -719,14 +814,22 @@ export const storeService = {
       }
     }
 
+    // 3. Save to local storage cache
     const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
-    orders.unshift(newOrder);
+    orders.unshift(finalOrder);
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, orders);
 
-    return newOrder;
+    return finalOrder;
   },
 
   async updateOrderStatus(id: string, status: OrderStatus, note?: string): Promise<Order> {
+    // 1. Update on Server API
+    await fetchApi<Order>(`/api/orders/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note }),
+    });
+
+    // 2. Update on Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase
@@ -743,23 +846,76 @@ export const storeService = {
       }
     }
 
+    // 3. Update local cache
     const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
-    const index = orders.findIndex((o) => o.id === id);
-    if (index === -1) throw new Error('Pedido no encontrado');
+    const index = orders.findIndex((o) => o.id === id || o.order_number === id);
+    if (index === -1) {
+      return { id, status, updated_at: new Date().toISOString() } as any;
+    }
     orders[index].status = status;
     orders[index].updated_at = new Date().toISOString();
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, orders);
     return orders[index];
   },
 
+  async deleteOrder(id: string): Promise<boolean> {
+    // 1. Delete on Server API
+    await fetchApi(`/api/orders/${id}`, { method: 'DELETE' });
+
+    // 2. Delete on Supabase if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('orders').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase deleteOrder fallback', err);
+      }
+    }
+
+    // 3. Delete from local cache
+    const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
+    const filtered = orders.filter((o) => o.id !== id && o.order_number !== id);
+    setLocalData(LOCAL_STORAGE_KEYS.ORDERS, filtered);
+    return true;
+  },
+
+  async syncAllLocalOrders(): Promise<{ syncedCount: number; totalCount: number }> {
+    const localOrders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
+    const serverOrders = (await fetchApi<Order[]>('/api/orders')) || [];
+    const unsynced = localOrders.filter(
+      (lo) => !serverOrders.some((so) => so.id === lo.id || so.order_number === lo.order_number)
+    );
+
+    if (unsynced.length > 0) {
+      const res = await fetchApi<{ success: boolean; count: number; orders: Order[] }>('/api/orders/sync', {
+        method: 'POST',
+        body: JSON.stringify({ orders: unsynced }),
+      });
+      if (res && res.orders) {
+        setLocalData(LOCAL_STORAGE_KEYS.ORDERS, res.orders);
+        return { syncedCount: unsynced.length, totalCount: res.orders.length };
+      }
+    }
+
+    return { syncedCount: 0, totalCount: serverOrders.length || localOrders.length };
+  },
+
   // ANNOUNCEMENTS
   async getAnnouncements(activeOnly = true): Promise<Announcement[]> {
+    const serverAnns = await fetchApi<Announcement[]>('/api/announcements');
+    if (serverAnns && Array.isArray(serverAnns) && serverAnns.length > 0) {
+      setLocalData(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, serverAnns);
+      return activeOnly ? serverAnns.filter((a) => a.active) : serverAnns;
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         let query = supabase.from('announcements').select('*').order('sort_order', { ascending: true });
         if (activeOnly) query = query.eq('active', true);
         const { data, error } = await query;
-        if (!error && data && data.length > 0) return data as Announcement[];
+        if (!error && data && data.length > 0) {
+          setLocalData(LOCAL_STORAGE_KEYS.ANNOUNCEMENTS, data as Announcement[]);
+          return data as Announcement[];
+        }
       } catch (err) {
         console.warn('Supabase getAnnouncements fallback', err);
       }
@@ -777,6 +933,9 @@ export const storeService = {
       id: 'ann-' + Date.now(),
       created_at: new Date().toISOString(),
     };
+
+    fetchApi('/api/announcements', { method: 'POST', body: JSON.stringify(newAnn) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('announcements').insert([newAnn]).select().single();
@@ -798,6 +957,8 @@ export const storeService = {
     if (updates.active !== undefined) cleanUpdates.active = Boolean(updates.active);
     if (updates.sort_order !== undefined) cleanUpdates.sort_order = sanitizeNumber(updates.sort_order, 1);
 
+    fetchApi(`/api/announcements/${id}`, { method: 'PUT', body: JSON.stringify(cleanUpdates) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('announcements').update(cleanUpdates).eq('id', id).select().single();
@@ -815,6 +976,8 @@ export const storeService = {
   },
 
   async deleteAnnouncement(id: string): Promise<boolean> {
+    fetchApi(`/api/announcements/${id}`, { method: 'DELETE' }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('announcements').delete().eq('id', id);
@@ -847,12 +1010,21 @@ export const storeService = {
 
   // BANNERS
   async getBanners(activeOnly = true): Promise<Banner[]> {
+    const serverBanners = await fetchApi<Banner[]>('/api/banners');
+    if (serverBanners && Array.isArray(serverBanners) && serverBanners.length > 0) {
+      setLocalData(LOCAL_STORAGE_KEYS.BANNERS, serverBanners);
+      return activeOnly ? serverBanners.filter((b) => b.active) : serverBanners;
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         let query = supabase.from('banners').select('*').order('sort_order', { ascending: true });
         if (activeOnly) query = query.eq('active', true);
         const { data, error } = await query;
-        if (!error && data && data.length > 0) return data as Banner[];
+        if (!error && data && data.length > 0) {
+          setLocalData(LOCAL_STORAGE_KEYS.BANNERS, data as Banner[]);
+          return data as Banner[];
+        }
       } catch (err) {
         console.warn('Supabase getBanners fallback', err);
       }
@@ -873,6 +1045,9 @@ export const storeService = {
       sort_order: sanitizeNumber(bannerData.sort_order, 1),
       id: 'ban-' + Date.now(),
     };
+
+    fetchApi('/api/banners', { method: 'POST', body: JSON.stringify(newBanner) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('banners').insert([newBanner]).select().single();
@@ -898,6 +1073,8 @@ export const storeService = {
     if (updates.active !== undefined) cleanUpdates.active = Boolean(updates.active);
     if (updates.sort_order !== undefined) cleanUpdates.sort_order = sanitizeNumber(updates.sort_order, 1);
 
+    fetchApi(`/api/banners/${id}`, { method: 'PUT', body: JSON.stringify(cleanUpdates) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('banners').update(cleanUpdates).eq('id', id).select().single();
@@ -915,6 +1092,8 @@ export const storeService = {
   },
 
   async deleteBanner(id: string): Promise<boolean> {
+    fetchApi(`/api/banners/${id}`, { method: 'DELETE' }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('banners').delete().eq('id', id);
@@ -939,6 +1118,11 @@ export const storeService = {
       active: Boolean(b.active),
       sort_order: sanitizeNumber(b.sort_order, 1),
     }));
+
+    for (const b of cleanList) {
+      fetchApi('/api/banners', { method: 'POST', body: JSON.stringify(b) }).catch(() => {});
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('banners').upsert(cleanList);
@@ -951,6 +1135,12 @@ export const storeService = {
 
   // SETTINGS
   async getStoreSettings(): Promise<StoreSettings> {
+    const serverSettings = await fetchApi<StoreSettings>('/api/settings');
+    if (serverSettings && serverSettings.store_name) {
+      setLocalData(LOCAL_STORAGE_KEYS.SETTINGS, serverSettings);
+      return serverSettings;
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.from('store_settings').select('*').limit(1).single();
@@ -986,6 +1176,9 @@ export const storeService = {
       whatsapp_custom_message: sanitizePlainText(settings.whatsapp_custom_message || 'Hola Las 3YR, quiero realizar un pedido', { allowNewlines: true }),
       announcement_text: settings.announcement_text ? sanitizePlainText(settings.announcement_text, { allowNewlines: false }) : '',
     };
+
+    fetchApi('/api/settings', { method: 'PUT', body: JSON.stringify(cleanSettings) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
@@ -1008,6 +1201,8 @@ export const storeService = {
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return { success: false, message: 'Por favor ingresa un correo electrónico válido.' };
     }
+
+    fetchApi('/api/subscribers', { method: 'POST', body: JSON.stringify({ email: cleanEmail }) }).catch(() => {});
 
     if (isSupabaseConfigured && supabase) {
       try {
@@ -1032,6 +1227,11 @@ export const storeService = {
   },
 
   async getNewsletterSubscribers(): Promise<string[]> {
+    const serverSubs = await fetchApi<NewsletterSubscriber[]>('/api/subscribers');
+    if (serverSubs && Array.isArray(serverSubs) && serverSubs.length > 0) {
+      return serverSubs.map((s) => s.email);
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
@@ -1058,6 +1258,9 @@ export const storeService = {
       created_at: new Date().toISOString(),
       read: false,
     };
+
+    fetchApi('/api/messages', { method: 'POST', body: JSON.stringify(newMessage) }).catch(() => {});
+
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('contact_messages').insert([newMessage]);
@@ -1072,6 +1275,12 @@ export const storeService = {
   },
 
   async getContactMessages(): Promise<ContactMessage[]> {
+    const serverMsgs = await fetchApi<ContactMessage[]>('/api/messages');
+    if (serverMsgs && Array.isArray(serverMsgs) && serverMsgs.length > 0) {
+      setLocalData(LOCAL_STORAGE_KEYS.MESSAGES, serverMsgs);
+      return serverMsgs;
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
