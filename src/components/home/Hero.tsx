@@ -138,6 +138,28 @@ export const Hero: React.FC = () => {
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#E8F3EB]/40 rounded-full blur-3xl pointer-events-none -z-0" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-14 lg:py-16 relative z-10">
+        {/* Floating Side Arrows for quick slider navigation */}
+        {activeBanners.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={handlePrev}
+              aria-label="Banner anterior"
+              className="hidden sm:flex absolute left-2 lg:left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-white/95 hover:bg-white text-[#163E2B] shadow-md hover:shadow-xl border border-[#E2D8CD] items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNext}
+              aria-label="Siguiente banner"
+              className="hidden sm:flex absolute right-2 lg:right-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-white/95 hover:bg-white text-[#163E2B] shadow-md hover:shadow-xl border border-[#E2D8CD] items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </>
+        )}
+
         <div className="min-h-[460px] sm:min-h-[420px] lg:min-h-[460px] flex items-center">
           <AnimatePresence mode="wait" initial={false} custom={direction}>
             <motion.div

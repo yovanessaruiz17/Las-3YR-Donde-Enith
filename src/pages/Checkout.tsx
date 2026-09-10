@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ShoppingBag,
@@ -43,6 +43,18 @@ export const Checkout: React.FC = () => {
     address: '',
     notes: '',
   });
+
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        name: prev.name || user.full_name || '',
+        email: prev.email || user.email || '',
+        phone: prev.phone || user.phone || '',
+        whatsapp: prev.whatsapp || user.phone || '',
+      }));
+    }
+  }, [user]);
 
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('Envío por DiDi / inDrive' as DeliveryMethod);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Transferencia Nequi');
@@ -154,6 +166,7 @@ export const Checkout: React.FC = () => {
       subtotal: completedOrder.subtotal,
       shipping: completedOrder.shipping,
       total: completedOrder.total,
+      orderNumber: completedOrder.order_number,
       customerName: completedOrder.customer_name,
       customerPhone: completedOrder.whatsapp,
       city: completedOrder.city,

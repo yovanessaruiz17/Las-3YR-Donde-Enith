@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Trash2, ShoppingBag, Plus, Minus, MessageCircle } from 'lucide-react';
+import { X, Trash2, ShoppingBag, Plus, Minus, MessageCircle, Loader2 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useStore } from '../../context/StoreContext';
+import { useAuth } from '../../context/AuthContext';
 import { storeService } from '../../services/storeService';
 
 export const CartDrawer: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [submittingWhatsApp, setSubmittingWhatsApp] = useState(false);
   const {
     cart,
     isOpen,
@@ -21,7 +24,7 @@ export const CartDrawer: React.FC = () => {
     itemCount,
     formatCurrency,
   } = useCart();
-  const { settings } = useStore();
+  const { settings, showToast } = useStore();
 
   if (!isOpen) return null;
 
@@ -30,22 +33,77 @@ export const CartDrawer: React.FC = () => {
     navigate('/checkout');
   };
 
-  const handleWhatsAppCheckout = () => {
-    if (cart.length === 0) return;
+  const handleWhatsAppCheckout = async () => {
+    if (cart.length === 0 || submittingWhatsApp) return;
 
-    const url = storeService.buildWhatsAppOrderUrl({
-      whatsappNumber: settings.whatsapp || '+573244456597',
-      items: cart.map((item) => ({
-        name: item.product.name + (item.selected_variant ? ` (${item.selected_variant})` : ''),
-        quantity: item.quantity,
-        price: item.product.price,
-      })),
-      subtotal,
-      shipping,
-      total,
-    });
+    setSubmittingWhatsApp(true);
+    try {
+      // 1. Automatically register and persist the order centrally so the Admin Panel sees it immediately!
+      const order = await storeService.createOrder({
+        customer_name: user?.full_name || 'Cliente WhatsApp',
+        customer_email: user?.email || '',
+        customer_phone: user?.phone || 'Vía WhatsApp Directo',
+        whatsapp: user?.phone || 'Vía WhatsApp Directo',
+        address: 'Coordinado por chat de WhatsApp',
+        city: 'Cartagena',
+        department: 'Bolívar',
+        notes: 'Pedido generado por botón directo de WhatsApp en el carrito',
+        subtotal,
+        shipping,
+        total,
+        origin: 'WhatsApp',
+        payment_method: 'Contraentrega',
+        delivery_method: 'Envío a domicilio por DiDi / inDrive',
+        status: 'Pendiente',
+        items: cart.map((item) => ({
+          product_id: item.product.id,
+          product_name: item.product.name + (item.selected_variant ? ` (${item.selected_variant})` : ''),
+          product_image: item.product.main_image,
+          quantity: item.quantity,
+          unit_price: item.product.price,
+          subtotal: item.product.price * item.quantity,
+        })),
+      });
 
-    window.open(url, '_blank');
+      showToast(`¡Pedido ${order.order_number} registrado en el sistema! Abriendo WhatsApp...`, 'success');
+      clearCart();
+      closeCart();
+
+      // 2. Open WhatsApp with the registered order number
+      const url = storeService.buildWhatsAppOrderUrl({
+        whatsappNumber: settings.whatsapp || '+573244456597',
+        items: cart.map((item) => ({
+          name: item.product.name + (item.selected_variant ? ` (${item.selected_variant})` : ''),
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+        subtotal,
+        shipping,
+        total,
+        orderNumber: order.order_number,
+        customerName: user?.full_name,
+        customerPhone: user?.phone,
+      });
+
+      window.open(url, '_blank');
+    } catch (err) {
+      console.warn('Error saving WhatsApp order:', err);
+      // Fallback: still launch WhatsApp so customer isn't blocked
+      const url = storeService.buildWhatsAppOrderUrl({
+        whatsappNumber: settings.whatsapp || '+573244456597',
+        items: cart.map((item) => ({
+          name: item.product.name + (item.selected_variant ? ` (${item.selected_variant})` : ''),
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+        subtotal,
+        shipping,
+        total,
+      });
+      window.open(url, '_blank');
+    } finally {
+      setSubmittingWhatsApp(false);
+    }
   };
 
   return (
@@ -219,10 +277,15 @@ export const CartDrawer: React.FC = () => {
                 {/* Button 2: White/Green Outline COMPRAR POR WHATSAPP */}
                 <button
                   onClick={handleWhatsAppCheckout}
-                  className="w-full bg-white hover:bg-[#F2F8F4] text-[#163E2B] border border-[#163E2B] py-3 rounded-xl font-bold text-xs sm:text-sm tracking-wider uppercase transition flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={submittingWhatsApp}
+                  className="w-full bg-white hover:bg-[#F2F8F4] text-[#163E2B] border border-[#163E2B] py-3 rounded-xl font-bold text-xs sm:text-sm tracking-wider uppercase transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  <MessageCircle className="w-4 h-4 text-[#25D366] fill-[#25D366]" />
-                  <span>COMPRAR POR WHATSAPP</span>
+                  {submittingWhatsApp ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-[#163E2B]" />
+                  ) : (
+                    <MessageCircle className="w-4 h-4 text-[#25D366] fill-[#25D366]" />
+                  )}
+                  <span>{submittingWhatsApp ? 'REGISTRANDO...' : 'COMPRAR POR WHATSAPP'}</span>
                 </button>
               </div>
             </div>

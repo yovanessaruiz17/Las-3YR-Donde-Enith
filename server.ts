@@ -23,6 +23,14 @@ async function startServer() {
     next();
   });
 
+  // Anti-cache headers for all /api endpoints so all devices always get fresh data
+  app.use('/api', (req: Request, res: Response, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    next();
+  });
+
   // ==========================================
   // API ROUTES (MUST COME FIRST BEFORE VITE)
   // ==========================================
@@ -56,21 +64,22 @@ async function startServer() {
   app.post('/api/orders', (req: Request, res: Response) => {
     try {
       const body = req.body as Partial<Order>;
-      if (!body.customer_name || !body.customer_phone) {
-        return res.status(400).json({ error: 'Nombre y teléfono requeridos' });
-      }
 
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const orderNumber = body.order_number || `3YR-${new Date().getFullYear().toString().slice(-2)}${randomNum}`;
       const now = new Date().toISOString();
 
+      // Forgiving fallback so orders are never dropped due to missing optional fields
+      const customerName = (body.customer_name || '').trim() || (body.customer_email ? body.customer_email.split('@')[0] : 'Cliente Las 3YR');
+      const customerPhone = (body.customer_phone || body.whatsapp || '').trim() || 'No especificado';
+
       const newOrder: Order = {
         id: body.id || 'ord-' + Date.now(),
         order_number: orderNumber,
-        customer_name: body.customer_name,
+        customer_name: customerName,
         customer_email: body.customer_email || '',
-        customer_phone: body.customer_phone,
-        whatsapp: body.whatsapp || body.customer_phone,
+        customer_phone: customerPhone,
+        whatsapp: body.whatsapp || customerPhone,
         address: body.address || '',
         city: body.city || 'Cartagena',
         department: body.department || 'Bolívar',
@@ -82,7 +91,7 @@ async function startServer() {
         payment_method: body.payment_method || 'Contraentrega',
         delivery_method: body.delivery_method || 'Envío a domicilio',
         status: (body.status as OrderStatus) || 'Pendiente',
-        items: body.items || [],
+        items: Array.isArray(body.items) ? body.items : [],
         created_at: body.created_at || now,
         updated_at: now,
       };

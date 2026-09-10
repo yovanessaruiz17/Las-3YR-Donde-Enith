@@ -60,7 +60,8 @@ function writeJsonFile<T>(filename: string, data: T): void {
 export const serverStorage = {
   // ORDERS
   getOrders(): Order[] {
-    return readJsonFile<Order[]>('orders.json', []);
+    const orders = readJsonFile<Order[]>('orders.json', []);
+    return orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   },
 
   saveOrder(newOrder: Order): Order {
@@ -72,6 +73,38 @@ export const serverStorage = {
       orders[existingIndex] = { ...orders[existingIndex], ...newOrder, updated_at: new Date().toISOString() };
     } else {
       orders.unshift(newOrder);
+
+      // REDUCE PRODUCT STOCK & AUTO-DEACTIVATE IF STOCK REACHES ZERO
+      if (Array.isArray(newOrder.items) && newOrder.items.length > 0) {
+        const products = this.getProducts();
+        let productsChanged = false;
+
+        for (const item of newOrder.items) {
+          const prodIndex = products.findIndex(
+            (p) => p.id === item.product_id || (item.product_name && p.name.toLowerCase() === item.product_name.toLowerCase())
+          );
+
+          if (prodIndex >= 0) {
+            const prod = products[prodIndex];
+            const currentStock = typeof prod.stock === 'number' ? prod.stock : 10;
+            const qtyPurchased = Math.max(1, Number(item.quantity) || 1);
+            const remainingStock = Math.max(0, currentStock - qtyPurchased);
+
+            prod.stock = remainingStock;
+            // When a product has no stock left, automatically deactivate/hide it
+            if (remainingStock <= 0) {
+              prod.active = false;
+              console.log(`[INVENTORY] Producto "${prod.name}" (${prod.id}) quedó sin stock (0). Desactivado y ocultado del catálogo.`);
+            }
+            prod.updated_at = new Date().toISOString();
+            productsChanged = true;
+          }
+        }
+
+        if (productsChanged) {
+          writeJsonFile('products.json', products);
+        }
+      }
     }
     writeJsonFile('orders.json', orders);
     return newOrder;
@@ -97,6 +130,8 @@ export const serverStorage = {
   syncOrders(incomingOrders: Order[]): Order[] {
     const currentOrders = this.getOrders();
     let hasChanges = false;
+    let productsChanged = false;
+    const products = this.getProducts();
 
     for (const incoming of incomingOrders) {
       if (!incoming || (!incoming.id && !incoming.order_number)) continue;
@@ -106,11 +141,35 @@ export const serverStorage = {
       if (!exists) {
         currentOrders.unshift(incoming);
         hasChanges = true;
+
+        // Deduct stock for synced orders
+        if (Array.isArray(incoming.items) && incoming.items.length > 0) {
+          for (const item of incoming.items) {
+            const prodIndex = products.findIndex(
+              (p) => p.id === item.product_id || (item.product_name && p.name.toLowerCase() === item.product_name.toLowerCase())
+            );
+            if (prodIndex >= 0) {
+              const prod = products[prodIndex];
+              const currentStock = typeof prod.stock === 'number' ? prod.stock : 10;
+              const qtyPurchased = Math.max(1, Number(item.quantity) || 1);
+              const remainingStock = Math.max(0, currentStock - qtyPurchased);
+              prod.stock = remainingStock;
+              if (remainingStock <= 0) {
+                prod.active = false;
+              }
+              prod.updated_at = new Date().toISOString();
+              productsChanged = true;
+            }
+          }
+        }
       }
     }
 
+    if (productsChanged) {
+      writeJsonFile('products.json', products);
+    }
+
     if (hasChanges) {
-      // Sort desc by created_at
       currentOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       writeJsonFile('orders.json', currentOrders);
     }

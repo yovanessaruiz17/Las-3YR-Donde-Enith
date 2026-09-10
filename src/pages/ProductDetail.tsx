@@ -18,6 +18,7 @@ import { storeService } from '../services/storeService';
 import { useCart } from '../context/CartContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { ProductCard } from '../components/product/ProductCard';
 import { SEOHead } from '../components/common/SEOHead';
 
@@ -27,6 +28,8 @@ export const ProductDetail: React.FC = () => {
   const { addToCart, formatCurrency } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { settings, showToast } = useStore();
+  const { user } = useAuth();
+  const [submittingWhatsApp, setSubmittingWhatsApp] = useState(false);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [selectedImage, setSelectedImage] = useState<string>('');
@@ -88,21 +91,72 @@ export const ProductDetail: React.FC = () => {
     showToast(`${quantity}x "${product.name}" agregado al carrito`, 'success');
   };
 
-  const handleWhatsAppBuy = () => {
-    const url = storeService.buildWhatsAppOrderUrl({
-      whatsappNumber: settings.whatsapp || '+573244456597',
-      items: [{ name: product.name, quantity, price: product.price }],
-      subtotal: product.price * quantity,
-      shipping:
-        product.price * quantity >= (settings.free_shipping_from || 150000)
-          ? 0
-          : settings.shipping_cost || 12000,
-      total:
-        product.price * quantity >= (settings.free_shipping_from || 150000)
-          ? product.price * quantity
-          : product.price * quantity + (settings.shipping_cost || 12000),
-    });
-    window.open(url, '_blank');
+  const handleWhatsAppBuy = async () => {
+    if (!product || submittingWhatsApp) return;
+
+    setSubmittingWhatsApp(true);
+    const sub = product.price * quantity;
+    const ship = sub >= (settings.free_shipping_from || 150000) ? 0 : settings.shipping_cost || 12000;
+    const tot = sub + ship;
+
+    try {
+      // 1. Create order centrally so the Admin Panel receives and reflects it immediately
+      const order = await storeService.createOrder({
+        customer_name: user?.full_name || 'Cliente WhatsApp Directo',
+        customer_email: user?.email || '',
+        customer_phone: user?.phone || 'Vía WhatsApp Directo',
+        whatsapp: user?.phone || 'Vía WhatsApp Directo',
+        address: 'Coordinado por chat de WhatsApp',
+        city: 'Cartagena',
+        department: 'Bolívar',
+        notes: `Pedido rápido desde ficha de producto: ${product.name}`,
+        subtotal: sub,
+        shipping: ship,
+        total: tot,
+        origin: 'WhatsApp',
+        payment_method: 'Contraentrega',
+        delivery_method: 'Envío a domicilio por DiDi / inDrive',
+        status: 'Pendiente',
+        items: [
+          {
+            product_id: product.id,
+            product_name: product.name,
+            product_image: product.main_image,
+            quantity,
+            unit_price: product.price,
+            subtotal: sub,
+          },
+        ],
+      });
+
+      showToast(`¡Pedido ${order.order_number} registrado! Abriendo WhatsApp...`, 'success');
+
+      // 2. Open WhatsApp with the registered order number
+      const url = storeService.buildWhatsAppOrderUrl({
+        whatsappNumber: settings.whatsapp || '+573244456597',
+        items: [{ name: product.name, quantity, price: product.price }],
+        subtotal: sub,
+        shipping: ship,
+        total: tot,
+        orderNumber: order.order_number,
+        customerName: user?.full_name,
+        customerPhone: user?.phone,
+      });
+      window.open(url, '_blank');
+    } catch (err) {
+      console.warn('Error saving WhatsApp order:', err);
+      // Fallback
+      const url = storeService.buildWhatsAppOrderUrl({
+        whatsappNumber: settings.whatsapp || '+573244456597',
+        items: [{ name: product.name, quantity, price: product.price }],
+        subtotal: sub,
+        shipping: ship,
+        total: tot,
+      });
+      window.open(url, '_blank');
+    } finally {
+      setSubmittingWhatsApp(false);
+    }
   };
 
   return (
@@ -284,10 +338,11 @@ export const ProductDetail: React.FC = () => {
                 {/* White/Green Outline: COMPRAR POR WHATSAPP */}
                 <button
                   onClick={handleWhatsAppBuy}
-                  className="w-full py-3.5 px-6 rounded-xl bg-white hover:bg-[#F2F8F4] text-[#163E2B] border border-[#163E2B] font-bold text-xs sm:text-sm tracking-wider uppercase transition flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={submittingWhatsApp}
+                  className="w-full py-3.5 px-6 rounded-xl bg-white hover:bg-[#F2F8F4] text-[#163E2B] border border-[#163E2B] font-bold text-xs sm:text-sm tracking-wider uppercase transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <MessageCircle className="w-4 h-4 text-[#25D366] fill-[#25D366]" />
-                  <span>COMPRAR POR WHATSAPP</span>
+                  <span>{submittingWhatsApp ? 'REGISTRANDO PEDIDO...' : 'COMPRAR POR WHATSAPP'}</span>
                 </button>
               </div>
             </div>

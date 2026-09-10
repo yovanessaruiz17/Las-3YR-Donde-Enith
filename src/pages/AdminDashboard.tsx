@@ -42,6 +42,8 @@ import {
   Filter,
   Clock,
   Calendar,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../context/AuthContext';
@@ -93,6 +95,10 @@ export const AdminDashboard: React.FC = () => {
   const [editingBanner, setEditingBanner] = useState<Partial<Banner> | null>(null);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Partial<Announcement> | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | OrderStatus>('all');
+  const [lastOrderSyncTime, setLastOrderSyncTime] = useState<Date>(new Date());
+  const ordersCountRef = useRef<number>(0);
 
   // Supabase Testing & Sync states
   const [dbTesting, setDbTesting] = useState(false);
@@ -223,8 +229,12 @@ export const AdminDashboard: React.FC = () => {
     setNewsletterEmails(emails);
     setAdminCategories(cats);
     setAdminBrands(brs);
-    setAdminBanners(bans);
+    setAdminBanners(
+      [...(bans || [])].sort((a, b) => (Number(a.sort_order) || 1) - (Number(b.sort_order) || 1))
+    );
     setAdminAnnouncements(anns);
+    ordersCountRef.current = ords.length;
+    setLastOrderSyncTime(new Date());
     setLoading(false);
   };
 
@@ -234,6 +244,43 @@ export const AdminDashboard: React.FC = () => {
       loadAdminsList();
     }
   }, [isAdmin, activeTab]);
+
+  // Real-time background sync for orders & inventory (every 4 seconds)
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const silentSync = async () => {
+      try {
+        const [ords, prods] = await Promise.all([
+          storeService.getOrders(),
+          storeService.getProducts({ activeOnly: false }),
+        ]);
+
+        if (ordersCountRef.current > 0 && ords.length > ordersCountRef.current) {
+          const diff = ords.length - ordersCountRef.current;
+          const newest = ords[0];
+          showToast(`🔔 ¡${diff} nuevo pedido registrado! (${newest?.order_number || ''})`, 'success');
+        }
+        ordersCountRef.current = ords.length;
+        setOrders(ords);
+        setProducts(prods);
+        setLastOrderSyncTime(new Date());
+      } catch (err) {
+        console.warn('Silent sync error:', err);
+      }
+    };
+
+    const handleOrderCreatedEvent = () => {
+      silentSync();
+    };
+    window.addEventListener('las3yr_order_created', handleOrderCreatedEvent);
+
+    const interval = setInterval(silentSync, 4000);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('las3yr_order_created', handleOrderCreatedEvent);
+    };
+  }, [isAdmin, showToast]);
 
   if (!isAdmin) {
     return <Admin2FALogin />;
@@ -539,6 +586,19 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleMoveBannerOrder = async (banner: Banner, direction: 'up' | 'down') => {
+    const currentOrder = Number(banner.sort_order) || 1;
+    const newOrder = direction === 'up' ? Math.max(1, currentOrder - 1) : currentOrder + 1;
+    try {
+      await storeService.updateBanner(banner.id, { sort_order: newOrder });
+      showToast(`Orden del banner cambiado a #${newOrder}`, 'success');
+      await loadAllData();
+      await refreshStore();
+    } catch (err: any) {
+      showToast(`Error al reordenar banner: ${err?.message || err}`, 'error');
+    }
+  };
+
   // ANNOUNCEMENT CRUD HANDLERS
   const handleSaveAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -603,6 +663,38 @@ export const AdminDashboard: React.FC = () => {
       setSelectedOrder({ ...selectedOrder, status: newStatus });
     }
   };
+
+  const handleDeleteOrder = async (orderId: string, orderNumber: string) => {
+    if (!window.confirm(`¿Estás seguro de eliminar el pedido ${orderNumber}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+    try {
+      await storeService.deleteOrder(orderId);
+      showToast(`Pedido ${orderNumber} eliminado correctamente`, 'success');
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder(null);
+      }
+      await loadAllData();
+    } catch (err: any) {
+      showToast(`Error al eliminar pedido: ${err?.message || err}`, 'error');
+    }
+  };
+
+  const filteredOrders = useMemo(() => {
+    const q = orderSearch.toLowerCase().trim();
+    return orders.filter((o) => {
+      const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter;
+      const matchSearch =
+        !q ||
+        o.order_number.toLowerCase().includes(q) ||
+        o.customer_name.toLowerCase().includes(q) ||
+        (o.whatsapp && o.whatsapp.toLowerCase().includes(q)) ||
+        (o.customer_phone && o.customer_phone.toLowerCase().includes(q)) ||
+        (o.city && o.city.toLowerCase().includes(q)) ||
+        (o.items && o.items.some((it) => it.product_name.toLowerCase().includes(q)));
+      return matchStatus && matchSearch;
+    });
+  }, [orders, orderSearch, orderStatusFilter]);
 
   return (
     <div className="min-h-screen bg-[#F7F4EF]">
@@ -865,81 +957,304 @@ export const AdminDashboard: React.FC = () => {
         {/* TAB 2: PEDIDOS */}
         {activeTab === 'orders' && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#EFE9E1] shadow-2xs space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <h2 className="font-serif text-xl sm:text-2xl font-bold text-[#163E2B]">
-                Gestión de Pedidos
-              </h2>
-              <button
-                onClick={loadAllData}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#EFE9E1] text-xs text-[#163E2B] hover:bg-[#FAF8F5] cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Actualizar</span>
-              </button>
+            {/* Header & Live Sync Status */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-[#F0EAE1] pb-5">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="font-serif text-xl sm:text-2xl font-bold text-[#163E2B]">
+                    Gestión de Pedidos
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#163E2B] text-white font-mono text-xs font-bold">
+                    {orders.length} totales
+                  </span>
+                  {pendingOrders > 0 && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-sans text-xs font-bold animate-pulse">
+                      {pendingOrders} pendientes
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-stone-500 mt-1">
+                  Revisa, actualiza estados y gestiona las compras realizadas desde la web o vía WhatsApp
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Live Sync Status Pill */}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#E9F3EC] border border-[#C5DEC8] text-[11px] font-semibold text-[#163E2B]">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>En vivo ({lastOrderSyncTime.toLocaleTimeString('es-CO')})</span>
+                </div>
+
+                <button
+                  onClick={loadAllData}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#EFE9E1] text-xs font-bold text-[#163E2B] hover:bg-[#FAF8F5] cursor-pointer shadow-2xs transition"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Actualizar</span>
+                </button>
+              </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[#EFE9E1] text-stone-400 font-bold uppercase text-[10px]">
-                    <th className="pb-3">Pedido</th>
-                    <th className="pb-3">Cliente</th>
-                    <th className="pb-3">Ciudad / Dirección</th>
-                    <th className="pb-3">Total</th>
-                    <th className="pb-3">Método</th>
-                    <th className="pb-3">Estado</th>
-                    <th className="pb-3 text-right">Contacto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F0EAE1]">
-                  {orders.map((ord) => (
-                    <tr key={ord.id} className="hover:bg-[#FAF8F5]">
-                      <td className="py-3 font-mono font-bold text-[#163E2B]">
-                        {ord.order_number}
-                      </td>
-                      <td className="py-3">
-                        <p className="font-bold text-[#163E2B]">{ord.customer_name}</p>
-                        <p className="text-stone-500 text-[11px]">{ord.whatsapp || ord.customer_phone}</p>
-                      </td>
-                      <td className="py-3 text-stone-600">
-                        <p>{ord.city}</p>
-                        <p className="text-[11px] text-stone-400">{ord.address}</p>
-                      </td>
-                      <td className="py-3 font-bold text-[#163E2B]">
-                        {storeService.formatCurrency(ord.total)}
-                      </td>
-                      <td className="py-3 text-stone-600">{ord.payment_method}</td>
-                      <td className="py-3">
-                        <select
-                          value={ord.status}
-                          onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as OrderStatus)}
-                          className="bg-white border border-[#E4DDD3] rounded-lg px-2 py-1 text-xs font-semibold text-[#163E2B] outline-none cursor-pointer"
+            {/* Filter Pills & Search Bar */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                {/* Status Tabs */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      { id: 'all', label: 'Todos', count: orders.length },
+                      { id: 'Pendiente', label: 'Pendientes', count: orders.filter((o) => o.status === 'Pendiente').length },
+                      { id: 'Confirmado', label: 'Confirmados', count: orders.filter((o) => o.status === 'Confirmado').length },
+                      { id: 'En camino', label: 'En camino', count: orders.filter((o) => o.status === 'En camino').length },
+                      { id: 'Entregado', label: 'Entregados', count: orders.filter((o) => o.status === 'Entregado').length },
+                      { id: 'Cancelado', label: 'Cancelados', count: orders.filter((o) => o.status === 'Cancelado').length },
+                    ] as const
+                  ).map((tab) => {
+                    const isActive = orderStatusFilter === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setOrderStatusFilter(tab.id as any)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                          isActive
+                            ? 'bg-[#163E2B] text-white shadow-xs'
+                            : 'bg-[#FAF8F5] text-stone-600 hover:bg-[#F2ECE4] border border-[#EBE1D5]'
+                        }`}
+                      >
+                        <span>{tab.label}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                            isActive ? 'bg-white/20 text-white' : 'bg-stone-200/80 text-stone-600'
+                          }`}
                         >
-                          <option value="Pendiente">Pendiente</option>
-                          <option value="Confirmado">Confirmado</option>
-                          <option value="En camino">En camino</option>
-                          <option value="Entregado">Entregado</option>
-                          <option value="Cancelado">Cancelado</option>
-                        </select>
-                      </td>
-                      <td className="py-3 text-right space-x-2">
-                        <a
-                          href={`https://wa.me/${(ord.whatsapp || ord.customer_phone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                            `¡Hola ${ord.customer_name}! Te saludamos de Las 3YR - Donde Enith respecto a tu pedido ${ord.order_number}.`
-                          )}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#25D366] text-white text-[11px] font-bold"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span>WhatsApp</span>
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                          {tab.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative min-w-[240px] sm:w-72">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    placeholder="Buscar pedido, cliente, cel o producto..."
+                    className="w-full bg-[#FAF8F5] border border-[#E4DDD3] rounded-xl text-xs pl-8 pr-8 py-2 outline-none focus:border-[#163E2B] focus:bg-white transition"
+                  />
+                  {orderSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setOrderSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* Orders Table */}
+            {filteredOrders.length === 0 ? (
+              <div className="py-16 text-center bg-[#FAF8F5] rounded-2xl border border-dashed border-[#E4DDD3] space-y-3">
+                <ShoppingCart className="w-10 h-10 text-stone-300 mx-auto" />
+                <p className="font-serif text-base font-bold text-[#163E2B]">
+                  No se encontraron pedidos
+                </p>
+                <p className="text-xs text-stone-500 max-w-sm mx-auto">
+                  {orderSearch || orderStatusFilter !== 'all'
+                    ? 'No hay pedidos que coincidan con la búsqueda o filtro seleccionado.'
+                    : 'Aún no hay compras registradas en la tienda.'}
+                </p>
+                {(orderSearch || orderStatusFilter !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderSearch('');
+                      setOrderStatusFilter('all');
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-white border border-[#E4DDD3] text-xs font-bold text-[#163E2B] hover:bg-[#F2ECE4] cursor-pointer"
+                  >
+                    Restablecer filtros
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-[#EFE9E1]">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-[#FAF8F5] border-b border-[#EFE9E1] text-stone-500 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3.5 px-4">Pedido / Fecha</th>
+                      <th className="py-3.5 px-3">Cliente</th>
+                      <th className="py-3.5 px-3">Ciudad / Dirección</th>
+                      <th className="py-3.5 px-3">Productos</th>
+                      <th className="py-3.5 px-3">Total</th>
+                      <th className="py-3.5 px-3">Estado</th>
+                      <th className="py-3.5 px-4 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F0EAE1]">
+                    {filteredOrders.map((ord) => {
+                      const itemCount = (ord.items || []).reduce((sum, it) => sum + (it.quantity || 1), 0);
+                      const isWhatsApp = ord.origin === 'WhatsApp';
+                      return (
+                        <tr
+                          key={ord.id}
+                          className="hover:bg-[#FAF8F5]/80 transition cursor-pointer"
+                          onClick={() => setSelectedOrder(ord)}
+                        >
+                          {/* Order Number & Timestamp & Origin */}
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-[#163E2B] text-xs">
+                                {ord.order_number}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                                  isWhatsApp
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-indigo-50 text-indigo-700'
+                                }`}
+                              >
+                                {isWhatsApp && <MessageCircle className="w-2.5 h-2.5" />}
+                                {isWhatsApp ? 'WhatsApp' : 'Web'}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-stone-400 block mt-0.5">
+                              {ord.created_at
+                                ? new Date(ord.created_at).toLocaleString('es-CO', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : 'Reciente'}
+                            </span>
+                          </td>
+
+                          {/* Customer */}
+                          <td className="py-3 px-3">
+                            <p className="font-bold text-[#163E2B]">{ord.customer_name}</p>
+                            <p className="text-stone-500 text-[11px] font-mono">
+                              {ord.whatsapp || ord.customer_phone || 'Sin número'}
+                            </p>
+                          </td>
+
+                          {/* City & Address */}
+                          <td className="py-3 px-3 text-stone-600 max-w-[180px]">
+                            <p className="font-semibold text-stone-800">{ord.city || 'Cartagena'}</p>
+                            <p className="text-[11px] text-stone-400 truncate">{ord.address || 'Coordina por chat'}</p>
+                          </td>
+
+                          {/* Items summary with thumbnails */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5">
+                              {ord.items && ord.items.length > 0 && (
+                                <div className="flex -space-x-2 overflow-hidden shrink-0">
+                                  {ord.items.slice(0, 3).map((it, idx) => (
+                                    <img
+                                      key={idx}
+                                      src={it.product_image || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=100&q=80'}
+                                      alt={it.product_name}
+                                      className="inline-block h-6 w-6 rounded-full ring-2 ring-white object-cover bg-stone-100"
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                              <span className="text-[11px] font-bold text-[#163E2B]">
+                                {itemCount} {itemCount === 1 ? 'artículo' : 'artículos'}
+                              </span>
+                            </div>
+                            {ord.items && ord.items[0] && (
+                              <p className="text-[10px] text-stone-400 truncate max-w-[150px]">
+                                {ord.items[0].product_name}
+                                {ord.items.length > 1 ? ` +${ord.items.length - 1} más` : ''}
+                              </p>
+                            )}
+                          </td>
+
+                          {/* Total & Payment Method */}
+                          <td className="py-3 px-3">
+                            <span className="font-bold text-[#163E2B] text-xs block">
+                              {storeService.formatCurrency(ord.total)}
+                            </span>
+                            <span className="text-[10px] text-stone-400 block truncate max-w-[120px]">
+                              {ord.payment_method || 'Contraentrega'}
+                            </span>
+                          </td>
+
+                          {/* Status Dropdown */}
+                          <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={ord.status}
+                              onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as OrderStatus)}
+                              className={`rounded-lg px-2 py-1 text-[11px] font-bold outline-none cursor-pointer border ${
+                                ord.status === 'Pendiente'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : ord.status === 'Confirmado'
+                                  ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                  : ord.status === 'En camino'
+                                  ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                  : ord.status === 'Entregado'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-rose-50 text-rose-800 border-rose-200'
+                              }`}
+                            >
+                              <option value="Pendiente">⏳ Pendiente</option>
+                              <option value="Confirmado">✅ Confirmado</option>
+                              <option value="En camino">🚚 En camino</option>
+                              <option value="Entregado">🎉 Entregado</option>
+                              <option value="Cancelado">❌ Cancelado</option>
+                            </select>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3 px-4 text-right space-x-1.5" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrder(ord)}
+                              className="p-1.5 rounded-lg border border-[#E4DDD3] bg-white text-[#163E2B] hover:bg-[#FAF8F5] transition cursor-pointer shadow-2xs"
+                              title="Ver detalle completo del pedido"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+
+                            <a
+                              href={`https://wa.me/${(ord.whatsapp || ord.customer_phone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                                `¡Hola ${ord.customer_name}! Te saludamos de Las 3YR - Donde Enith respecto a tu pedido ${ord.order_number}.`
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#25D366] hover:bg-[#1EBE5D] text-white text-[10px] font-bold shadow-2xs transition"
+                              title="Chatear por WhatsApp con el cliente"
+                            >
+                              <MessageCircle className="w-3 h-3" />
+                              <span className="hidden sm:inline">WhatsApp</span>
+                            </a>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOrder(ord.id, ord.order_number)}
+                              className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                              title="Eliminar pedido"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -1640,7 +1955,10 @@ export const AdminDashboard: React.FC = () => {
                     <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                       <div className="space-y-1 text-xs">
                         <p className="text-stone-600 line-clamp-2 text-[11px]">{banner.description}</p>
-                        <div className="flex items-center gap-2 pt-1">
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <span className="bg-[#163E2B]/10 text-[#163E2B] px-2 py-0.5 rounded text-[10px] font-bold">
+                            Orden: #{banner.sort_order || index + 1}
+                          </span>
                           <span className="bg-white border border-[#EBE1D5] px-2 py-0.5 rounded text-[10px] font-mono text-stone-600 font-bold">
                             Botón: "{banner.button_text || 'VER MÁS'}" → {banner.button_url || '/'}
                           </span>
@@ -1648,18 +1966,38 @@ export const AdminDashboard: React.FC = () => {
                       </div>
 
                       <div className="flex items-center justify-between border-t border-[#EBE1D5] pt-3">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleBannerActive(banner)}
-                          className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                            banner.active !== false
-                              ? 'bg-[#EAF2ED] text-[#163E2B] hover:bg-[#D5E6DA]'
-                              : 'bg-stone-200 text-stone-600 hover:bg-stone-300'
-                          }`}
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>{banner.active !== false ? 'Desactivar' : 'Activar Banner'}</span>
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBannerActive(banner)}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                              banner.active !== false
+                                ? 'bg-[#EAF2ED] text-[#163E2B] hover:bg-[#D5E6DA]'
+                                : 'bg-stone-200 text-stone-600 hover:bg-stone-300'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{banner.active !== false ? 'Desactivar' : 'Activar'}</span>
+                          </button>
+
+                          {/* Quick re-order controls */}
+                          <button
+                            type="button"
+                            onClick={() => handleMoveBannerOrder(banner, 'up')}
+                            className="p-1.5 rounded-xl border border-[#E4DDD3] bg-white text-stone-600 hover:text-[#163E2B] hover:bg-[#FAF8F5] transition cursor-pointer"
+                            title="Subir posición en el slider"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveBannerOrder(banner, 'down')}
+                            className="p-1.5 rounded-xl border border-[#E4DDD3] bg-white text-stone-600 hover:text-[#163E2B] hover:bg-[#FAF8F5] transition cursor-pointer"
+                            title="Bajar posición en el slider"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
 
                         <div className="flex items-center gap-2">
                           <button
@@ -3033,6 +3371,249 @@ UPDATE profiles SET role = 'admin' WHERE email = '{user?.email || 'enith@las3yr.
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Order Details */}
+        {selectedOrder && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+            <div className="relative w-full max-w-2xl bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-[#EBE1D5] space-y-6 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-[#F0EAE1] pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-serif font-bold text-xl sm:text-2xl text-[#163E2B]">
+                      Pedido #{selectedOrder.order_number}
+                    </h3>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                        selectedOrder.origin === 'WhatsApp'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-indigo-50 text-indigo-700'
+                      }`}
+                    >
+                      {selectedOrder.origin === 'WhatsApp' && <MessageCircle className="w-3 h-3" />}
+                      {selectedOrder.origin || 'Web'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-1">
+                    Registrado el{' '}
+                    {selectedOrder.created_at
+                      ? new Date(selectedOrder.created_at).toLocaleString('es-CO', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Reciente'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrder(null)}
+                  className="p-1.5 text-stone-400 hover:text-stone-700 rounded-full cursor-pointer hover:bg-stone-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Status Selector Banner */}
+              <div className="bg-[#FAF8F5] border border-[#EBE1D5] rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
+                    Estado del Pedido
+                  </span>
+                  <span className="text-sm font-bold text-[#163E2B]">
+                    Estado actual: <strong className="underline">{selectedOrder.status}</strong>
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(['Pendiente', 'Confirmado', 'En camino', 'Entregado', 'Cancelado'] as OrderStatus[]).map(
+                    (st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => handleUpdateOrderStatus(selectedOrder.id, st)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          selectedOrder.status === st
+                            ? 'bg-[#163E2B] text-white shadow-xs'
+                            : 'bg-white text-stone-600 hover:bg-[#F2ECE4] border border-[#E4DDD3]'
+                        }`}
+                      >
+                        {st}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {/* Customer Information Card */}
+              <div className="space-y-3">
+                <h4 className="font-serif font-bold text-[#163E2B] text-sm flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-[#D83173]" />
+                  <span>Datos del Cliente y Entrega</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#FAF8F5] p-4 rounded-2xl border border-[#EBE1D5] text-xs">
+                  <div>
+                    <span className="text-stone-400 font-medium block">Nombre completo</span>
+                    <p className="font-bold text-[#163E2B] text-sm mt-0.5">{selectedOrder.customer_name}</p>
+                  </div>
+                  <div>
+                    <span className="text-stone-400 font-medium block">WhatsApp / Teléfono</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="font-bold text-[#163E2B] font-mono">
+                        {selectedOrder.whatsapp || selectedOrder.customer_phone || 'No registrado'}
+                      </p>
+                      {(selectedOrder.whatsapp || selectedOrder.customer_phone) && (
+                        <a
+                          href={`https://wa.me/${(selectedOrder.whatsapp || selectedOrder.customer_phone).replace(/[^0-9]/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#25D366] text-white text-[10px] font-bold"
+                        >
+                          <MessageCircle className="w-3 h-3" />
+                          <span>Chat</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-stone-400 font-medium block">Ciudad / Departamento</span>
+                    <p className="font-semibold text-stone-700 mt-0.5">
+                      {selectedOrder.city || 'Cartagena'}
+                      {selectedOrder.department ? `, ${selectedOrder.department}` : ''}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-stone-400 font-medium block">Dirección de Entrega</span>
+                    <p className="font-semibold text-stone-700 mt-0.5">
+                      {selectedOrder.address || 'A acordar por WhatsApp'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-stone-400 font-medium block">Método de Pago</span>
+                    <p className="font-semibold text-stone-700 mt-0.5">
+                      {selectedOrder.payment_method || 'Contraentrega'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-stone-400 font-medium block">Método de Envío</span>
+                    <p className="font-semibold text-stone-700 mt-0.5">
+                      {selectedOrder.delivery_method || 'Envío a domicilio (DiDi / inDrive)'}
+                    </p>
+                  </div>
+                  {selectedOrder.notes && (
+                    <div className="sm:col-span-2 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                      <span className="text-amber-800 font-bold block text-[11px]">Notas u observaciones del cliente:</span>
+                      <p className="text-amber-900 mt-0.5">{selectedOrder.notes}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-3">
+                <h4 className="font-serif font-bold text-[#163E2B] text-sm flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-[#D83173]" />
+                  <span>Artículos Comprados ({selectedOrder.items?.length || 0})</span>
+                </h4>
+                <div className="overflow-x-auto rounded-2xl border border-[#EBE1D5]">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-[#FAF8F5] border-b border-[#EBE1D5] text-stone-500 font-bold uppercase text-[10px]">
+                        <th className="py-2.5 px-3">Producto</th>
+                        <th className="py-2.5 px-3 text-center">Cant</th>
+                        <th className="py-2.5 px-3 text-right">Precio Unitario</th>
+                        <th className="py-2.5 px-3 text-right">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#F0EAE1]">
+                      {(selectedOrder.items || []).map((it, idx) => (
+                        <tr key={idx} className="hover:bg-[#FAF8F5]/50">
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2.5">
+                              <img
+                                src={it.product_image || 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=100&q=80'}
+                                alt={it.product_name}
+                                className="w-9 h-9 rounded-lg object-cover bg-stone-100 shrink-0 border border-stone-200"
+                              />
+                              <span className="font-semibold text-[#163E2B] max-w-[200px] sm:max-w-xs truncate">
+                                {it.product_name}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-bold text-[#163E2B]">
+                            {it.quantity}
+                          </td>
+                          <td className="py-2.5 px-3 text-right text-stone-600 font-mono">
+                            {storeService.formatCurrency(it.unit_price)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-[#163E2B] font-mono">
+                            {storeService.formatCurrency(it.subtotal || it.unit_price * it.quantity)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Total Summary */}
+              <div className="bg-[#FAF8F5] p-4 rounded-2xl border border-[#EBE1D5] space-y-2 text-xs">
+                <div className="flex justify-between text-stone-600">
+                  <span>Subtotal productos:</span>
+                  <span className="font-mono">{storeService.formatCurrency(selectedOrder.subtotal || selectedOrder.total)}</span>
+                </div>
+                {Number(selectedOrder.shipping) > 0 && (
+                  <div className="flex justify-between text-stone-600">
+                    <span>Domicilio / Envío:</span>
+                    <span className="font-mono">{storeService.formatCurrency(selectedOrder.shipping)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-bold text-[#163E2B] pt-2 border-t border-[#EBE1D5]">
+                  <span>Total General:</span>
+                  <span className="font-mono text-base text-[#163E2B]">
+                    {storeService.formatCurrency(selectedOrder.total)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Bottom Actions */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteOrder(selectedOrder.id, selectedOrder.order_number)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Eliminar Pedido</span>
+                </button>
+
+                <div className="w-full sm:w-auto flex items-center gap-2">
+                  <a
+                    href={`https://wa.me/${(selectedOrder.whatsapp || selectedOrder.customer_phone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                      `¡Hola ${selectedOrder.customer_name}! Te saludamos de Las 3YR - Donde Enith en Cartagena. Te escribimos para confirmar los detalles de tu pedido ${selectedOrder.order_number} por un valor de ${storeService.formatCurrency(selectedOrder.total)}.`
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Contactar por WhatsApp</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrder(null)}
+                    className="px-5 py-2.5 rounded-xl bg-[#163E2B] hover:bg-[#0F2B1E] text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

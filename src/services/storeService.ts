@@ -67,6 +67,7 @@ function setLocalData<T>(key: string, data: T): void {
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T | null> {
   try {
     const res = await fetch(url, {
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json', ...options?.headers },
       ...options,
     });
@@ -127,9 +128,11 @@ export const storeService = {
 
     let products = [...rawProducts];
 
-    // Filter active
+    // Filter active: hide inactive or zero-stock products from storefront by default
     if (params?.activeOnly !== false) {
-      products = products.filter((p) => p.active !== false);
+      products = products.filter(
+        (p) => p.active !== false && (typeof p.stock !== 'number' || p.stock > 0)
+      );
     }
 
     // Filter featured
@@ -819,6 +822,41 @@ export const storeService = {
     orders.unshift(finalOrder);
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, orders);
 
+    // 4. Update local products inventory: deduct stock & auto-deactivate out-of-stock items
+    try {
+      const localProducts = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+      let prodsUpdated = false;
+
+      for (const item of finalOrder.items) {
+        const pIdx = localProducts.findIndex(
+          (p) => p.id === item.product_id || (item.product_name && p.name.toLowerCase() === item.product_name.toLowerCase())
+        );
+        if (pIdx >= 0) {
+          const currentStock = typeof localProducts[pIdx].stock === 'number' ? localProducts[pIdx].stock! : 10;
+          const qty = Math.max(1, Number(item.quantity) || 1);
+          const remaining = Math.max(0, currentStock - qty);
+          localProducts[pIdx].stock = remaining;
+          if (remaining <= 0) {
+            localProducts[pIdx].active = false;
+          }
+          prodsUpdated = true;
+        }
+      }
+
+      if (prodsUpdated) {
+        setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, localProducts);
+      }
+    } catch (e) {
+      console.warn('Local stock deduction error:', e);
+    }
+
+    // 5. Broadcast real-time order creation event to all listening tabs and components
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('las3yr_order_created', { detail: finalOrder }));
+      }
+    } catch {}
+
     return finalOrder;
   },
 
@@ -1309,6 +1347,7 @@ export const storeService = {
     subtotal: number;
     shipping: number;
     total: number;
+    orderNumber?: string;
     customerName?: string;
     customerPhone?: string;
     city?: string;
@@ -1324,7 +1363,11 @@ export const storeService = {
       itemsText += `• ${item.quantity}x ${item.name} (${this.formatCurrency(item.price * item.quantity)})\n`;
     });
 
-    let msg = `Hola 👋\n\nSoy cliente de *Las 3YR - Donde Enith*.\nQuiero realizar el siguiente pedido:\n\n🛍️ *PRODUCTOS:*\n${itemsText}\n`;
+    let msg = `Hola 👋\n\nSoy cliente de *Las 3YR - Donde Enith*.\n`;
+    if (order.orderNumber) {
+      msg += `🧾 *PEDIDO N°:* ${order.orderNumber}\n`;
+    }
+    msg += `Quiero confirmar el siguiente pedido:\n\n🛍️ *PRODUCTOS:*\n${itemsText}\n`;
     msg += `📊 *Subtotal:* ${this.formatCurrency(order.subtotal)}\n`;
     msg += `🚚 *Envío:* ${order.shipping === 0 ? '¡Gratis!' : this.formatCurrency(order.shipping)}\n`;
     msg += `✨ *TOTAL:* ${this.formatCurrency(order.total)}\n\n`;

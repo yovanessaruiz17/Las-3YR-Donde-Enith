@@ -92,7 +92,11 @@ export type PaymentMethod =
   | 'Nequi / Daviplata'
   | 'Acordar por WhatsApp';
 
-export type DeliveryMethod = 'Envío a domicilio' | 'Recoger en punto';
+export type DeliveryMethod =
+  | 'Envío a domicilio'
+  | 'Recoger en punto'
+  | 'Envío a domicilio por DiDi / inDrive'
+  | string;
 
 export interface OrderItem {
   id?: string;
