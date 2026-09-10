@@ -361,6 +361,10 @@ export const AdminDashboard: React.FC = () => {
       const selectedBrand = adminBrands.find((b) => b.name === editingProduct.brand_name) || adminBrands[0];
       const selectedCategory = adminCategories.find((c) => c.name === editingProduct.category_name) || adminCategories[0];
 
+      const finalStock = typeof editingProduct.stock === 'number' ? Math.max(0, editingProduct.stock) : 1;
+      // Regla de inventario: productos con stock >= 1 están activados y mostrándose; solo si queda en 0 se desactiva
+      const finalActive = finalStock > 0 ? (editingProduct.active !== false) : false;
+
       const productPayload: any = {
         ...editingProduct,
         name: sanitizePlainText(editingProduct.name),
@@ -371,7 +375,8 @@ export const AdminDashboard: React.FC = () => {
         category_id: selectedCategory?.id || editingProduct.category_id || null,
         category_name: sanitizePlainText(selectedCategory?.name || editingProduct.category_name || 'Belleza'),
         category_slug: sanitizePlainText(selectedCategory?.slug || editingProduct.category_slug || 'belleza'),
-        active: editingProduct.active !== undefined ? Boolean(editingProduct.active) : true,
+        stock: finalStock,
+        active: finalActive,
         featured: Boolean(editingProduct.featured),
         price: Number(editingProduct.price) || 0,
         compare_price: editingProduct.compare_price ? Number(editingProduct.compare_price) : null,
@@ -392,6 +397,24 @@ export const AdminDashboard: React.FC = () => {
       await refreshStore();
     } catch (err: any) {
       showToast(`Error al guardar el producto: ${err?.message || 'Revisa la conexión de Supabase'}`, 'error');
+    }
+  };
+
+  const handleQuickRestock = async (productId: string, quantityToAdd = 5) => {
+    try {
+      const prod = products.find((p) => p.id === productId);
+      if (!prod) return;
+      const currentStock = typeof prod.stock === 'number' ? Math.max(0, prod.stock) : 0;
+      const newStock = currentStock + quantityToAdd;
+      await storeService.updateProduct(productId, {
+        stock: newStock,
+        active: true,
+      });
+      showToast(`Stock de "${prod.name}" actualizado a ${newStock} un. (Producto activado)`, 'success');
+      await loadAllData();
+      await refreshStore();
+    } catch (err: any) {
+      showToast(`Error al reabastecer stock: ${err?.message || err}`, 'error');
     }
   };
 
@@ -1396,11 +1419,31 @@ export const AdminDashboard: React.FC = () => {
                     <label className="block text-xs font-bold text-[#163E2B] mb-1">Stock / Unidades Disponibles</label>
                     <input
                       type="number"
-                      value={editingProduct.stock || 1}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, stock: Number(e.target.value) })}
+                      min="0"
+                      value={editingProduct.stock !== undefined ? editingProduct.stock : 1}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0);
+                        setEditingProduct({
+                          ...editingProduct,
+                          stock: val,
+                          // Si tiene al menos 1 producto queda activado; si queda en 0 se desactiva
+                          active: val > 0,
+                        });
+                      }}
                       placeholder="1"
-                      className="w-full bg-white border border-[#E4DDD3] rounded-xl text-xs py-2 px-3 outline-none"
+                      className="w-full bg-white border border-[#E4DDD3] rounded-xl text-xs py-2 px-3 outline-none focus:border-[#D83173]"
                     />
+                    <p className="text-[10px] font-medium mt-1">
+                      {editingProduct.stock !== undefined && editingProduct.stock > 0 ? (
+                        <span className="text-emerald-700 font-semibold">
+                          ✓ Activado y visible en tienda ({editingProduct.stock} un.)
+                        </span>
+                      ) : (
+                        <span className="text-rose-600 font-semibold">
+                          ⚠️ En 0 unidades: se desactivará automáticamente al guardar.
+                        </span>
+                      )}
+                    </p>
                   </div>
 
                   <div>
@@ -1424,25 +1467,30 @@ export const AdminDashboard: React.FC = () => {
                     />
                   </div>
 
-                  <div className="flex items-center gap-6 sm:col-span-2 bg-white p-3.5 rounded-xl border border-[#E4DDD3]">
-                    <label className="flex items-center gap-2 text-xs font-bold text-[#163E2B] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editingProduct.active !== false}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, active: e.target.checked })}
-                        className="rounded text-[#163E2B] focus:ring-0"
-                      />
-                      <span>Producto Activo en Tienda (Visible para clientes)</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-xs font-bold text-[#163E2B] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(editingProduct.featured)}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, featured: e.target.checked })}
-                        className="rounded text-[#D83173] focus:ring-0"
-                      />
-                      <span>Destacado en Inicio</span>
-                    </label>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:col-span-2 bg-white p-3.5 rounded-xl border border-[#E4DDD3]">
+                    <div className="flex items-center gap-6">
+                      <label className="flex items-center gap-2 text-xs font-bold text-[#163E2B] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editingProduct.active !== false && (editingProduct.stock === undefined || editingProduct.stock > 0)}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, active: e.target.checked })}
+                          className="rounded text-[#163E2B] focus:ring-0"
+                        />
+                        <span>Producto Activo en Tienda (Visible para clientes)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-bold text-[#163E2B] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editingProduct.featured)}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, featured: e.target.checked })}
+                          className="rounded text-[#D83173] focus:ring-0"
+                        />
+                        <span>Destacado en Inicio</span>
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-stone-500 italic">
+                      Regla: Productos con stock ≥ 1 siempre están activos; en 0 se desactivan.
+                    </span>
                   </div>
 
                   <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
@@ -1611,7 +1659,17 @@ export const AdminDashboard: React.FC = () => {
                           <span className="font-semibold text-[#163E2B]">{p.brand_name}</span> • {p.category_name}
                         </td>
                         <td className="py-2.5 font-semibold text-stone-600">
-                          {p.stock || 1} un.
+                          <span
+                            className={`font-bold ${
+                              (Number(p.stock) || 0) <= 0
+                                ? 'text-rose-600'
+                                : Number(p.stock) === 1
+                                ? 'text-amber-700'
+                                : 'text-[#163E2B]'
+                            }`}
+                          >
+                            {p.stock !== undefined ? p.stock : 0} un.
+                          </span>
                         </td>
                         <td className="py-2.5 font-bold text-[#163E2B]">
                           {storeService.formatCurrency(p.price)}
@@ -1619,15 +1677,27 @@ export const AdminDashboard: React.FC = () => {
                         <td className="py-2.5">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              p.active !== false
+                              p.active !== false && (Number(p.stock) || 0) > 0
                                 ? 'bg-[#E9F3EC] text-[#163E2B]'
                                 : 'bg-rose-100 text-rose-700'
                             }`}
                           >
-                            {p.active !== false ? 'Activo' : 'Inactivo'}
+                            {p.active !== false && (Number(p.stock) || 0) > 0
+                              ? `Activo (${p.stock} un.)`
+                              : 'Agotado (0 un.)'}
                           </span>
                         </td>
-                        <td className="py-2.5 text-right space-x-2">
+                        <td className="py-2.5 text-right space-x-1.5 whitespace-nowrap">
+                          {(Number(p.stock) || 0) <= 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickRestock(p.id, 5)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-[10px] transition cursor-pointer"
+                              title="Reabastecer con 5 unidades y activar producto"
+                            >
+                              +5 Stock
+                            </button>
+                          )}
                           <button
                             onClick={() => handleStartEditProduct(p)}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E4DDD3] bg-white text-[#163E2B] hover:bg-[#FAF8F5] hover:border-[#D83173] hover:text-[#D83173] font-semibold text-[11px] transition shadow-2xs cursor-pointer"

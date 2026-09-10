@@ -91,10 +91,12 @@ export const serverStorage = {
             const remainingStock = Math.max(0, currentStock - qtyPurchased);
 
             prod.stock = remainingStock;
-            // When a product has no stock left, automatically deactivate/hide it
+            // Solo si se vende esa última unidad y queda en 0 se desactiva; si aún tiene stock queda activo y visible
             if (remainingStock <= 0) {
               prod.active = false;
-              console.log(`[INVENTORY] Producto "${prod.name}" (${prod.id}) quedó sin stock (0). Desactivado y ocultado del catálogo.`);
+              console.log(`[INVENTORY] Se vendió la última unidad de "${prod.name}" (${prod.id}) y quedó en 0. Desactivado y ocultado del catálogo.`);
+            } else {
+              prod.active = true;
             }
             prod.updated_at = new Date().toISOString();
             productsChanged = true;
@@ -156,6 +158,8 @@ export const serverStorage = {
               prod.stock = remainingStock;
               if (remainingStock <= 0) {
                 prod.active = false;
+              } else {
+                prod.active = true;
               }
               prod.updated_at = new Date().toISOString();
               productsChanged = true;
@@ -178,26 +182,65 @@ export const serverStorage = {
 
   // PRODUCTS
   getProducts(): Product[] {
-    return readJsonFile<Product[]>('products.json', INITIAL_PRODUCTS);
+    const products = readJsonFile<Product[]>('products.json', INITIAL_PRODUCTS);
+    let changed = false;
+
+    // REGLA: "los productos que tengan mas de 1 producto esten activados y mostrandose y solo si se vende esa ultima unidad y queda en 0 se desactive"
+    for (const prod of products) {
+      const stock = typeof prod.stock === 'number' ? prod.stock : 1;
+      if (stock > 0 && prod.active === false) {
+        prod.active = true;
+        changed = true;
+      } else if (stock <= 0 && prod.active !== false) {
+        prod.active = false;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      writeJsonFile('products.json', products);
+    }
+    return products;
   },
 
   saveProduct(product: Product): Product {
     const products = this.getProducts();
     const idx = products.findIndex((p) => p.id === product.id);
+    const stock = typeof product.stock === 'number' ? Math.max(0, product.stock) : 1;
+    // Si stock >= 1 queda activado y mostrándose; solo si queda en 0 se desactiva
+    const finalActive = stock > 0;
+    const finalProduct = {
+      ...product,
+      stock,
+      active: finalActive,
+      updated_at: new Date().toISOString(),
+    };
     if (idx >= 0) {
-      products[idx] = { ...products[idx], ...product, updated_at: new Date().toISOString() };
+      products[idx] = { ...products[idx], ...finalProduct };
     } else {
-      products.unshift(product);
+      products.unshift(finalProduct);
     }
     writeJsonFile('products.json', products);
-    return product;
+    return finalProduct;
   },
 
   updateProduct(id: string, updates: Partial<Product>): Product | null {
     const products = this.getProducts();
     const idx = products.findIndex((p) => p.id === id);
     if (idx === -1) return null;
-    products[idx] = { ...products[idx], ...updates, updated_at: new Date().toISOString() };
+
+    const existing = products[idx];
+    const newStock = typeof updates.stock === 'number' ? Math.max(0, updates.stock) : (existing.stock ?? 1);
+    // Si stock >= 1 queda activado; si queda en 0 queda desactivado
+    const newActive = newStock > 0 ? (updates.active !== undefined ? updates.active : true) : false;
+
+    products[idx] = {
+      ...existing,
+      ...updates,
+      stock: newStock,
+      active: newActive,
+      updated_at: new Date().toISOString(),
+    };
     writeJsonFile('products.json', products);
     return products[idx];
   },

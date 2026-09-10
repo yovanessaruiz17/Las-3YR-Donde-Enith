@@ -274,16 +274,35 @@ export const ProductDetail: React.FC = () => {
                 </span>
               </div>
 
-              {/* Price */}
-              <div className="flex items-baseline gap-3">
-                <span className="text-2xl sm:text-3xl font-extrabold text-[#163E2B]">
-                  {formatCurrency(product.price)}
-                </span>
-                {product.compare_price && product.compare_price > product.price && (
-                  <span className="text-sm text-stone-400 line-through">
-                    {formatCurrency(product.compare_price)}
+              {/* Price & Stock status */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-baseline gap-3">
+                  <span className="text-2xl sm:text-3xl font-extrabold text-[#163E2B]">
+                    {formatCurrency(product.price)}
                   </span>
-                )}
+                  {product.compare_price && product.compare_price > product.price && (
+                    <span className="text-sm text-stone-400 line-through">
+                      {formatCurrency(product.compare_price)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Stock badge */}
+                <div>
+                  {(product.stock <= 0 || product.active === false) ? (
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                      Agotado
+                    </span>
+                  ) : product.stock === 1 ? (
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
+                      ¡Última unidad disponible!
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#E9F3EC] text-[#163E2B] border border-[#163E2B]/10">
+                      En stock ({product.stock} disponibles)
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Description matching screenshot */}
@@ -300,23 +319,32 @@ export const ProductDetail: React.FC = () => {
 
               {/* Quantity Selector matching screenshot */}
               <div className="pt-2">
-                <label className="block text-xs font-bold text-[#163E2B] mb-2">
-                  Cantidad
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-[#163E2B]">
+                    Cantidad
+                  </label>
+                  {product.stock > 0 && product.stock <= 3 && (
+                    <span className="text-[11px] font-semibold text-amber-700">
+                      Solo quedan {product.stock} un.
+                    </span>
+                  )}
+                </div>
                 <div className="inline-flex items-center border border-[#E4DDD3] rounded-xl bg-white overflow-hidden shadow-2xs">
                   <button
                     onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    className="p-2.5 hover:bg-[#FAF8F5] text-stone-600 hover:text-[#163E2B] transition"
+                    disabled={product.stock <= 0 || product.active === false}
+                    className="p-2.5 hover:bg-[#FAF8F5] text-stone-600 hover:text-[#163E2B] transition disabled:opacity-40"
                     aria-label="Disminuir"
                   >
                     <Minus className="w-3.5 h-3.5" />
                   </button>
                   <span className="px-4 text-xs sm:text-sm font-bold text-[#163E2B] min-w-[32px] text-center">
-                    {quantity}
+                    {product.stock <= 0 ? 0 : quantity}
                   </span>
                   <button
-                    onClick={() => setQuantity((q) => q + 1)}
-                    className="p-2.5 hover:bg-[#FAF8F5] text-stone-600 hover:text-[#163E2B] transition"
+                    onClick={() => setQuantity((q) => Math.min(product.stock || 1, q + 1))}
+                    disabled={product.stock <= 0 || product.active === false || quantity >= (product.stock || 1)}
+                    className="p-2.5 hover:bg-[#FAF8F5] text-stone-600 hover:text-[#163E2B] transition disabled:opacity-40"
                     aria-label="Aumentar"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -329,17 +357,22 @@ export const ProductDetail: React.FC = () => {
                 {/* Pink Solid Button: AGREGAR AL CARRITO */}
                 <button
                   onClick={handleAddToCart}
-                  className="w-full py-3.5 px-6 rounded-xl bg-[#D83173] hover:bg-[#C52B66] text-white font-bold text-xs sm:text-sm tracking-wider uppercase shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={product.stock <= 0 || product.active === false}
+                  className="w-full py-3.5 px-6 rounded-xl bg-[#D83173] hover:bg-[#C52B66] text-white font-bold text-xs sm:text-sm tracking-wider uppercase shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#D83173]"
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>AGREGAR AL CARRITO</span>
+                  <span>
+                    {product.stock <= 0 || product.active === false
+                      ? 'PRODUCTO AGOTADO'
+                      : 'AGREGAR AL CARRITO'}
+                  </span>
                 </button>
 
                 {/* White/Green Outline: COMPRAR POR WHATSAPP */}
                 <button
                   onClick={handleWhatsAppBuy}
-                  disabled={submittingWhatsApp}
-                  className="w-full py-3.5 px-6 rounded-xl bg-white hover:bg-[#F2F8F4] text-[#163E2B] border border-[#163E2B] font-bold text-xs sm:text-sm tracking-wider uppercase transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  disabled={submittingWhatsApp || product.stock <= 0 || product.active === false}
+                  className="w-full py-3.5 px-6 rounded-xl bg-white hover:bg-[#F2F8F4] text-[#163E2B] border border-[#163E2B] font-bold text-xs sm:text-sm tracking-wider uppercase transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <MessageCircle className="w-4 h-4 text-[#25D366] fill-[#25D366]" />
                   <span>{submittingWhatsApp ? 'REGISTRANDO PEDIDO...' : 'COMPRAR POR WHATSAPP'}</span>

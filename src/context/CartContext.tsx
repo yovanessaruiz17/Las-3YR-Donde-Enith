@@ -58,16 +58,23 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [cart]);
 
   const addToCart = (product: Product, quantity = 1, variant?: string) => {
+    const availableStock = typeof product.stock === 'number' ? Math.max(0, product.stock) : 999;
+    if (availableStock <= 0 || product.active === false) {
+      return; // No se puede agregar si el producto está sin stock o inactivo
+    }
+
     setCart((prev) => {
       const itemKey = variant ? `${product.id}-${variant}` : product.id;
       const existing = prev.find((item) => item.id === itemKey);
 
       if (existing) {
+        const newQty = Math.min(availableStock, existing.quantity + quantity);
         return prev.map((item) =>
-          item.id === itemKey ? { ...item, quantity: item.quantity + quantity } : item
+          item.id === itemKey ? { ...item, quantity: newQty } : item
         );
       } else {
-        return [...prev, { id: itemKey, product, quantity, selected_variant: variant }];
+        const initialQty = Math.min(availableStock, Math.max(1, quantity));
+        return [...prev, { id: itemKey, product, quantity: initialQty, selected_variant: variant }];
       }
     });
     setIsOpen(true);
@@ -79,9 +86,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const increaseQuantity = (id: string) => {
     setCart((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, quantity: item.quantity + 1 } : item
-      )
+      prev.map((item) => {
+        if (item.id === id) {
+          const maxStock = typeof item.product.stock === 'number' ? Math.max(0, item.product.stock) : 999;
+          if (item.quantity >= maxStock) return item;
+          return { ...item, quantity: item.quantity + 1 };
+        }
+        return item;
+      })
     );
   };
 

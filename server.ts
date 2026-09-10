@@ -156,6 +156,18 @@ async function startServer() {
     }
   });
 
+  app.get('/api/products/:id', (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const products = serverStorage.getProducts();
+      const product = products.find((p) => p.id === id || p.slug === id);
+      if (!product) return res.status(404).json({ error: 'Producto no encontrado' });
+      res.json(product);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Error fetching product' });
+    }
+  });
+
   app.post('/api/products', (req: Request, res: Response) => {
     try {
       const product = req.body;

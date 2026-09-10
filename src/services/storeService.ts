@@ -126,9 +126,19 @@ export const storeService = {
       rawProducts = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     }
 
+    // Regla de inventario: los productos con stock >= 1 están activados y mostrándose; solo si queda en 0 se desactiva
+    rawProducts = rawProducts.map((p) => {
+      const stock = typeof p.stock === 'number' ? p.stock : 1;
+      return {
+        ...p,
+        stock,
+        active: stock > 0 ? (p.active !== false) : false,
+      };
+    });
+
     let products = [...rawProducts];
 
-    // Filter active: hide inactive or zero-stock products from storefront by default
+    // Filter active: ocultar de la tienda/catálogo los productos sin stock (0) o desactivados
     if (params?.activeOnly !== false) {
       products = products.filter(
         (p) => p.active !== false && (typeof p.stock !== 'number' || p.stock > 0)
@@ -248,11 +258,9 @@ export const storeService = {
         .replace(/^-+|-+$/g, '') + '-' + Date.now().toString().slice(-4)
     ));
 
-    const isActive = productData.active !== undefined 
-      ? Boolean(productData.active) 
-      : productData.is_active !== undefined 
-      ? Boolean(productData.is_active) 
-      : true;
+    const rawStock = sanitizeNumber(productData.stock, 1);
+    // Regla de inventario: productos con stock >= 1 están activados y mostrándose; solo si queda en 0 se desactiva
+    const isActive = rawStock > 0 ? (productData.active !== undefined ? Boolean(productData.active) : true) : false;
 
     const isFeatured = productData.featured !== undefined 
       ? Boolean(productData.featured) 
@@ -279,7 +287,7 @@ export const storeService = {
       price: sanitizeNumber(productData.price, 0),
       compare_price: productData.compare_price ? sanitizeNumber(productData.compare_price, 0) : (null as any),
       discount_percentage: sanitizeNumber(productData.discount_percentage, 0),
-      stock: sanitizeNumber(productData.stock, 0),
+      stock: rawStock,
       main_image: sanitizeUrl(productData.main_image, 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80'),
       gallery: cleanGallery,
       content_spec: productData.content_spec ? sanitizePlainText(productData.content_spec, { allowNewlines: false }) : (null as any),
@@ -348,6 +356,15 @@ export const storeService = {
     const list = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     list.unshift(cleanProduct);
     setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, list);
+
+    // Sync to central server
+    try {
+      fetchApi<Product>('/api/products', {
+        method: 'POST',
+        body: JSON.stringify(cleanProduct),
+      }).catch(() => {});
+    } catch {}
+
     return cleanProduct;
   },
 
@@ -373,7 +390,15 @@ export const storeService = {
     if ('main_image' in cleanUpdates && cleanUpdates.main_image) cleanUpdates.main_image = sanitizeUrl(cleanUpdates.main_image);
     if ('gallery' in cleanUpdates && Array.isArray(cleanUpdates.gallery)) cleanUpdates.gallery = cleanUpdates.gallery.map((g: any) => sanitizeUrl(g)).filter(Boolean);
     if ('price' in cleanUpdates) cleanUpdates.price = sanitizeNumber(cleanUpdates.price, 0);
-    if ('stock' in cleanUpdates) cleanUpdates.stock = sanitizeNumber(cleanUpdates.stock, 0);
+    if ('stock' in cleanUpdates) {
+      cleanUpdates.stock = sanitizeNumber(cleanUpdates.stock, 0);
+      // Regla de inventario: productos con stock >= 1 quedan activados; si queda en 0 se desactivan
+      if (cleanUpdates.stock <= 0) {
+        cleanUpdates.active = false;
+      } else if (cleanUpdates.active === undefined) {
+        cleanUpdates.active = true;
+      }
+    }
     if ('compare_price' in cleanUpdates) cleanUpdates.compare_price = cleanUpdates.compare_price ? sanitizeNumber(cleanUpdates.compare_price) : null;
     if ('discount_percentage' in cleanUpdates) cleanUpdates.discount_percentage = sanitizeNumber(cleanUpdates.discount_percentage, 0);
     if ('rating' in cleanUpdates) cleanUpdates.rating = sanitizeNumber(cleanUpdates.rating, 5.0);
@@ -448,6 +473,15 @@ export const storeService = {
     const updated = { ...list[index], ...cleanUpdates };
     list[index] = updated;
     setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, list);
+
+    // Sync to central server
+    try {
+      fetchApi<Product>(`/api/products/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(cleanUpdates),
+      }).catch(() => {});
+    } catch {}
+
     return updated;
   },
 
@@ -468,6 +502,12 @@ export const storeService = {
     const list = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     const filtered = list.filter((p) => p.id !== id);
     setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, filtered);
+
+    // Sync to central server
+    try {
+      fetchApi(`/api/products/${id}`, { method: 'DELETE' }).catch(() => {});
+    } catch {}
+
     return true;
   },
 
@@ -836,8 +876,11 @@ export const storeService = {
           const qty = Math.max(1, Number(item.quantity) || 1);
           const remaining = Math.max(0, currentStock - qty);
           localProducts[pIdx].stock = remaining;
+          // Solo si se vende esa última unidad y queda en 0 se desactiva; si aún tiene stock permanece activo y visible
           if (remaining <= 0) {
             localProducts[pIdx].active = false;
+          } else {
+            localProducts[pIdx].active = true;
           }
           prodsUpdated = true;
         }
