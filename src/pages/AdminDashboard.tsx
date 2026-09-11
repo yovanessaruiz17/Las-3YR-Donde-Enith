@@ -362,7 +362,7 @@ export const AdminDashboard: React.FC = () => {
       featured: false,
       brand_name: adminBrands[0]?.name || 'Natura',
       category_name: adminCategories[0]?.name || 'Belleza',
-      main_image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
+      main_image: 'https://i.postimg.cc/66nJFRSG/Personas-con-productos-de-marcas-de-revistas.webp',
       description: '',
     });
     setTimeout(() => {
