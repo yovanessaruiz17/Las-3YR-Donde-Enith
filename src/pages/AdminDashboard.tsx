@@ -236,6 +236,9 @@ export const AdminDashboard: React.FC = () => {
       setAdminAnnouncements(anns || []);
       ordersCountRef.current = (ords || []).length;
       setLastOrderSyncTime(new Date());
+
+      // Sincronizar automáticamente inventario de pedidos entregados/confirmados
+      storeService.syncDeliveredOrdersInventory().catch(() => {});
     } finally {
       setLoading(false);
     }
@@ -437,6 +440,30 @@ export const AdminDashboard: React.FC = () => {
       await refreshStore();
     } catch (err: any) {
       showToast(`Error al reabastecer stock: ${err?.message || err}`, 'error');
+    }
+  };
+
+  const handleToggleProductActive = async (prod: Product) => {
+    try {
+      const isCurrentlyActive = prod.active !== false && (Number(prod.stock) || 0) > 0;
+      const newActive = !isCurrentlyActive;
+      const newStock = newActive ? ((Number(prod.stock) || 0) > 0 ? Number(prod.stock) : 5) : 0;
+
+      await storeService.updateProduct(prod.id, {
+        active: newActive,
+        stock: newStock,
+      });
+
+      showToast(
+        newActive
+          ? `"${prod.name}" activado en la tienda (${newStock} un.)`
+          : `"${prod.name}" desactivado de la tienda (stock en 0)`,
+        'success'
+      );
+      await loadAllData();
+      await refreshStore();
+    } catch (err: any) {
+      showToast(`Error al cambiar estado del producto: ${err?.message || err}`, 'error');
     }
   };
 
@@ -1711,17 +1738,24 @@ export const AdminDashboard: React.FC = () => {
                           {storeService.formatCurrency(p.price)}
                         </td>
                         <td className="py-2.5">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          <button
+                            type="button"
+                            onClick={() => handleToggleProductActive(p)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
                               p.active !== false && (Number(p.stock) || 0) > 0
-                                ? 'bg-[#E9F3EC] text-[#163E2B]'
-                                : 'bg-rose-100 text-rose-700'
+                                ? 'bg-[#E9F3EC] text-[#163E2B] border-emerald-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                                : 'bg-rose-100 text-rose-700 border-rose-300 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300'
                             }`}
+                            title={
+                              p.active !== false && (Number(p.stock) || 0) > 0
+                                ? 'Clic para desactivar (quitar de la tienda y poner stock en 0)'
+                                : 'Clic para activar (reabastecer y mostrar en tienda)'
+                            }
                           >
                             {p.active !== false && (Number(p.stock) || 0) > 0
-                              ? `Activo (${p.stock} un.)`
-                              : 'Agotado (0 un.)'}
-                          </span>
+                              ? `✓ Activo (${p.stock} un.)`
+                              : '✕ Agotado (0 un.)'}
+                          </button>
                         </td>
                         <td className="py-2.5 text-right space-x-1.5 whitespace-nowrap">
                           {(Number(p.stock) || 0) <= 0 && (

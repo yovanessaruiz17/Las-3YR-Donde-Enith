@@ -130,13 +130,14 @@ export const storeService = {
       rawProducts = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     }
 
-    // Regla de inventario: los productos con stock >= 1 están activados y mostrándose; solo si queda en 0 se desactiva
+    // Regla de inventario: productos con stock >= 1 y no desactivados manualmente están activos; en 0 se desactivan
     rawProducts = rawProducts.map((p) => {
-      const stock = typeof p.stock === 'number' ? Math.max(0, p.stock) : 1;
+      const stock = typeof p.stock === 'number' ? Math.max(0, p.stock) : (p.active === false ? 0 : 1);
+      const active = p.active !== false && stock > 0;
       return {
         ...p,
         stock,
-        active: stock > 0,
+        active,
       };
     });
 
@@ -322,8 +323,7 @@ export const storeService = {
         const { data, error } = await supabase
           .from('products')
           .insert([supabasePayload])
-          .select()
-          .single();
+          .select();
 
         if (error) {
           console.error('Error insertando producto en Supabase:', error);
@@ -333,27 +333,25 @@ export const storeService = {
             const { data: retryData, error: retryErr } = await supabase
               .from('products')
               .insert([retryPayload])
-              .select()
-              .single();
-            if (!retryErr && retryData) {
+              .select();
+            if (!retryErr && retryData && retryData.length > 0) {
               const list = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
-              list.unshift(retryData as Product);
+              list.unshift(retryData[0] as Product);
               setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, list);
-              return retryData as Product;
+              return retryData[0] as Product;
             }
           }
-          throw new Error(`Error en Supabase: ${error.message}`);
+          console.warn(`Aviso de Supabase al insertar: ${error.message}. Guardando en respaldo local...`);
         }
 
-        if (data) {
+        if (data && data.length > 0) {
           const list = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
-          list.unshift(data as Product);
+          list.unshift(data[0] as Product);
           setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, list);
-          return data as Product;
+          return data[0] as Product;
         }
       } catch (err: any) {
-        console.error('Excepción al guardar en Supabase:', err);
-        throw err;
+        console.error('Excepción al guardar producto en Supabase:', err);
       }
     }
 
@@ -426,44 +424,87 @@ export const storeService = {
           }
         }
 
-        const { data, error } = await supabase
+        // 1. Attempt UPDATE
+        let { data, error } = await supabase
           .from('products')
           .update(supabasePayload)
           .eq('id', id)
-          .select()
-          .single();
+          .select();
 
-        if (error) {
-          console.error('Error actualizando producto en Supabase:', error);
-          if (error.code === '23503' || error.message?.includes('foreign key')) {
-            const retryUpdates = { ...supabasePayload, brand_id: null, category_id: null };
-            const { data: retryData, error: retryErr } = await supabase
-              .from('products')
-              .update(retryUpdates)
-              .eq('id', id)
-              .select()
-              .single();
-            if (!retryErr && retryData) {
-              const list = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
-              const idx = list.findIndex((p) => p.id === id);
-              if (idx !== -1) list[idx] = retryData as Product;
-              setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, list);
-              return retryData as Product;
+        // 2. If foreign key violation, retry with null FKs
+        if (error && (error.code === '23503' || error.message?.includes('foreign key') || error.message?.includes('violates'))) {
+          const retryUpdates = { ...supabasePayload, brand_id: null, category_id: null };
+          const retryRes = await supabase
+            .from('products')
+            .update(retryUpdates)
+            .eq('id', id)
+            .select();
+          if (!retryRes.error) {
+            data = retryRes.data;
+            error = null;
+          }
+        }
+
+        // 3. If update returned 0 rows (product not found in Supabase yet), UPSERT the full product record!
+        if (!error && (!data || data.length === 0)) {
+          const localList = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+          const existing = localList.find((p) => p.id === id);
+
+          const fullRow: Record<string, any> = {
+            id,
+            name: cleanUpdates.name || existing?.name || 'Producto',
+            slug: cleanUpdates.slug || existing?.slug || `prod-${Date.now()}`,
+            description: cleanUpdates.description ?? existing?.description ?? '',
+            short_description: cleanUpdates.short_description ?? existing?.short_description ?? null,
+            price: Number(cleanUpdates.price ?? existing?.price ?? 0),
+            compare_price: cleanUpdates.compare_price ?? existing?.compare_price ?? null,
+            discount_percentage: Number(cleanUpdates.discount_percentage ?? existing?.discount_percentage ?? 0),
+            stock: typeof cleanUpdates.stock === 'number' ? cleanUpdates.stock : (existing?.stock ?? 0),
+            active: cleanUpdates.active !== undefined ? cleanUpdates.active : (existing?.active !== false),
+            featured: Boolean(cleanUpdates.featured ?? existing?.featured),
+            main_image: cleanUpdates.main_image || existing?.main_image || '',
+            gallery: cleanUpdates.gallery || existing?.gallery || [],
+            brand_name: cleanUpdates.brand_name || existing?.brand_name || 'Natura',
+            category_name: cleanUpdates.category_name || existing?.category_name || 'Belleza',
+            category_slug: cleanUpdates.category_slug || existing?.category_slug || 'belleza',
+            sku: cleanUpdates.sku || existing?.sku || null,
+            content_spec: cleanUpdates.content_spec || existing?.content_spec || null,
+            rating: Number(cleanUpdates.rating ?? existing?.rating ?? 5.0),
+            reviews_count: Number(cleanUpdates.reviews_count ?? existing?.reviews_count ?? 0),
+            created_at: existing?.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          const upsertRes = await supabase.from('products').upsert([fullRow]).select();
+          if (!upsertRes.error && upsertRes.data && upsertRes.data.length > 0) {
+            data = upsertRes.data;
+            error = null;
+          } else if (upsertRes.error) {
+            // Retry upsert without FKs if constraint failed
+            const retryUpsert = { ...fullRow, brand_id: null, category_id: null };
+            const retryRes = await supabase.from('products').upsert([retryUpsert]).select();
+            if (!retryRes.error && retryRes.data && retryRes.data.length > 0) {
+              data = retryRes.data;
+              error = null;
             }
           }
-          throw new Error(`Error en Supabase: ${error.message}`);
         }
 
-        if (data) {
+        if (data && data.length > 0) {
+          const updatedProd = data[0] as Product;
           const list = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
           const idx = list.findIndex((p) => p.id === id);
-          if (idx !== -1) list[idx] = data as Product;
+          if (idx !== -1) list[idx] = updatedProd;
+          else list.unshift(updatedProd);
           setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, list);
-          return data as Product;
+          return updatedProd;
+        }
+
+        if (error) {
+          console.warn('Advertencia actualizando en Supabase:', error.message);
         }
       } catch (err: any) {
-        console.error('Excepción al actualizar en Supabase:', err);
-        throw err;
+        console.warn('Excepción al actualizar en Supabase:', err?.message || err);
       }
     }
 
@@ -968,35 +1009,11 @@ export const storeService = {
     orders.unshift(finalOrder);
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, orders);
 
-    // 4. Update local products inventory: deduct stock & auto-deactivate out-of-stock items
+    // 4. Update products inventory (both local cache and Supabase Cloud): deduct stock & auto-deactivate out-of-stock items
     try {
-      const localProducts = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
-      let prodsUpdated = false;
-
-      for (const item of finalOrder.items) {
-        const pIdx = localProducts.findIndex(
-          (p) => p.id === item.product_id || (item.product_name && p.name.toLowerCase() === item.product_name.toLowerCase())
-        );
-        if (pIdx >= 0) {
-          const currentStock = typeof localProducts[pIdx].stock === 'number' ? localProducts[pIdx].stock! : 10;
-          const qty = Math.max(1, Number(item.quantity) || 1);
-          const remaining = Math.max(0, currentStock - qty);
-          localProducts[pIdx].stock = remaining;
-          // Solo si se vende esa última unidad y queda en 0 se desactiva; si aún tiene stock permanece activo y visible
-          if (remaining <= 0) {
-            localProducts[pIdx].active = false;
-          } else {
-            localProducts[pIdx].active = true;
-          }
-          prodsUpdated = true;
-        }
-      }
-
-      if (prodsUpdated) {
-        setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, localProducts);
-      }
+      await this.deductStockForOrder(finalOrder);
     } catch (e) {
-      console.warn('Local stock deduction error:', e);
+      console.warn('Stock deduction error:', e);
     }
 
     // 5. Broadcast real-time order creation event to all listening tabs and components
@@ -1007,6 +1024,110 @@ export const storeService = {
     } catch {}
 
     return finalOrder;
+  },
+
+  async deductStockForOrder(order: Order): Promise<void> {
+    if (!order.items || order.items.length === 0) return;
+
+    // 1. Update in local storage
+    try {
+      const localProducts = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+      let prodsUpdated = false;
+
+      for (const item of order.items) {
+        const pIdx = localProducts.findIndex(
+          (p) =>
+            p.id === item.product_id ||
+            (item.product_name && p.name.trim().toLowerCase() === item.product_name.trim().toLowerCase())
+        );
+        if (pIdx >= 0) {
+          const currentStock = typeof localProducts[pIdx].stock === 'number' ? localProducts[pIdx].stock! : 1;
+          const qty = Math.max(1, Number(item.quantity) || 1);
+          const remaining = Math.max(0, currentStock - qty);
+          localProducts[pIdx].stock = remaining;
+          // Si queda en 0 o menos, el producto queda inmediatamente desactivado de la tienda
+          localProducts[pIdx].active = remaining > 0;
+          localProducts[pIdx].updated_at = new Date().toISOString();
+          prodsUpdated = true;
+        }
+      }
+
+      if (prodsUpdated) {
+        setLocalData(LOCAL_STORAGE_KEYS.PRODUCTS, localProducts);
+      }
+    } catch (e) {
+      console.warn('Error al descontar stock local:', e);
+    }
+
+    // 2. Update directly in Supabase Cloud Database
+    if (isSupabaseConfigured && supabase) {
+      for (const item of order.items) {
+        try {
+          let targetProd: any = null;
+
+          // Buscar por ID en Supabase
+          if (item.product_id) {
+            const { data: byId } = await supabase
+              .from('products')
+              .select('id, stock, active, name')
+              .eq('id', item.product_id)
+              .maybeSingle();
+            targetProd = byId;
+          }
+
+          // Si no se encontró por ID, buscar por nombre
+          if (!targetProd && item.product_name) {
+            const { data: byName } = await supabase
+              .from('products')
+              .select('id, stock, active, name')
+              .ilike('name', item.product_name.trim())
+              .maybeSingle();
+            targetProd = byName;
+          }
+
+          if (targetProd) {
+            const currentStock = typeof targetProd.stock === 'number' ? targetProd.stock : 1;
+            const qty = Math.max(1, Number(item.quantity) || 1);
+            const remaining = Math.max(0, currentStock - qty);
+            const newActive = remaining > 0;
+
+            const { error: updateErr } = await supabase
+              .from('products')
+              .update({
+                stock: remaining,
+                active: newActive,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', targetProd.id);
+
+            if (!updateErr) {
+              console.log(
+                `[Supabase Stock] Producto "${targetProd.name}" (${targetProd.id}) actualizado: stock=${remaining}, activo=${newActive}`
+              );
+            } else {
+              console.warn('Error actualizando stock en Supabase:', updateErr.message);
+            }
+          }
+        } catch (err: any) {
+          console.warn('Excepción al descontar stock en Supabase:', err?.message || err);
+        }
+      }
+    }
+  },
+
+  async syncDeliveredOrdersInventory(): Promise<{ updatedCount: number }> {
+    let count = 0;
+    try {
+      const orders = await this.getOrders();
+      const validOrders = orders.filter((o) => o.status !== 'Cancelado' && o.items && o.items.length > 0);
+      for (const ord of validOrders) {
+        await this.deductStockForOrder(ord);
+        count++;
+      }
+    } catch (e) {
+      console.warn('syncDeliveredOrdersInventory warning:', e);
+    }
+    return { updatedCount: count };
   },
 
   async updateOrderStatus(id: string, status: OrderStatus, note?: string): Promise<Order> {
@@ -1042,6 +1163,17 @@ export const storeService = {
     orders[index].status = status;
     orders[index].updated_at = new Date().toISOString();
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, orders);
+
+    // 4. Si el pedido se marca como 'Entregado', 'Confirmado' o 'Enviado',
+    // aseguramos que el inventario de sus productos quede descontado y desactivado si queda en 0
+    if (status === 'Entregado' || status === 'Confirmado' || status === 'Enviado') {
+      try {
+        await this.deductStockForOrder(orders[index]);
+      } catch (err) {
+        console.warn('Error al asegurar deducción de stock en updateOrderStatus:', err);
+      }
+    }
+
     return orders[index];
   },
 
