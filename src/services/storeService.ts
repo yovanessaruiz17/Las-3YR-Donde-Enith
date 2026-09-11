@@ -1,4 +1,14 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+} from 'firebase/firestore';
 import {
   Product,
   Category,
@@ -716,17 +726,49 @@ export const storeService = {
 
   // ORDERS
   async getOrders(): Promise<Order[]> {
-    // 1. Central Server API First (Real Multi-Device Synchronization)
+    // 1. Firebase Firestore Cloud Database (Instant Multi-Device & Netlify Sync)
+    try {
+      const snap = await getDocs(collection(db, 'orders'));
+      const firestoreOrders: Order[] = [];
+      snap.forEach((d) => {
+        firestoreOrders.push(d.data() as Order);
+      });
+
+      // Synchronize any pending local orders created offline or previously
+      const localOrders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
+      const unsynced = localOrders.filter(
+        (lo) => !firestoreOrders.some((fo) => fo.id === lo.id || fo.order_number === lo.order_number)
+      );
+
+      if (unsynced.length > 0) {
+        for (const u of unsynced) {
+          try {
+            await setDoc(doc(db, 'orders', u.id), u);
+            firestoreOrders.push(u);
+          } catch {}
+        }
+      }
+
+      if (firestoreOrders.length > 0) {
+        firestoreOrders.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setLocalData(LOCAL_STORAGE_KEYS.ORDERS, firestoreOrders);
+        return firestoreOrders;
+      }
+    } catch (err) {
+      console.warn('Firestore getOrders fallback:', err);
+    }
+
+    // 2. Central Server API (if server is reachable)
     const serverOrders = await fetchApi<Order[]>('/api/orders');
     if (serverOrders && Array.isArray(serverOrders)) {
-      // Check if this device has any local order created previously that is not yet on the server
       const localOrders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
       const unsynced = localOrders.filter(
         (lo) => !serverOrders.some((so) => so.id === lo.id || so.order_number === lo.order_number)
       );
 
       if (unsynced.length > 0) {
-        // Automatically sync pending local orders to server so all devices see them!
         const syncRes = await fetchApi<{ success: boolean; orders: Order[] }>('/api/orders/sync', {
           method: 'POST',
           body: JSON.stringify({ orders: unsynced }),
@@ -743,7 +785,7 @@ export const storeService = {
       return serverOrders;
     }
 
-    // 2. Fallback to Supabase if configured
+    // 3. Fallback to Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
@@ -759,8 +801,37 @@ export const storeService = {
       }
     }
 
-    // 3. Fallback to local storage
+    // 4. Fallback to local storage
     return getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
+  },
+
+  // Real-time listener for Firestore orders
+  subscribeToOrders(callback: (orders: Order[]) => void): () => void {
+    try {
+      const unsub = onSnapshot(
+        collection(db, 'orders'),
+        (snapshot) => {
+          const ords: Order[] = [];
+          snapshot.forEach((d) => {
+            ords.push(d.data() as Order);
+          });
+          ords.sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          if (ords.length > 0) {
+            setLocalData(LOCAL_STORAGE_KEYS.ORDERS, ords);
+            callback(ords);
+          }
+        },
+        (err) => {
+          console.warn('Firestore onSnapshot listener error:', err);
+        }
+      );
+      return unsub;
+    } catch (err) {
+      console.warn('subscribeToOrders error:', err);
+      return () => {};
+    }
   },
 
   async getOrderById(id: string): Promise<Order | null> {
@@ -804,15 +875,22 @@ export const storeService = {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Post to Server API (persists centrally for all devices)
+    // 1. Save directly to Firebase Firestore Cloud Database (Instant cross-device & Netlify availability)
+    try {
+      await setDoc(doc(db, 'orders', newOrder.id), newOrder);
+    } catch (err) {
+      console.warn('Firestore setDoc order error:', err);
+    }
+
+    // 2. Post to Server API (if server is available)
     const serverCreated = await fetchApi<Order>('/api/orders', {
       method: 'POST',
       body: JSON.stringify(newOrder),
-    });
+    }).catch(() => null);
 
     const finalOrder = serverCreated || newOrder;
 
-    // 2. Also try Supabase if configured
+    // 3. Also try Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
@@ -857,12 +935,12 @@ export const storeService = {
       }
     }
 
-    // 3. Save to local storage cache
+    // 4. Save to local storage cache
     const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
     orders.unshift(finalOrder);
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, orders);
 
-    // 4. Update local products inventory: deduct stock & auto-deactivate out-of-stock items
+    // 5. Update local products inventory: deduct stock & auto-deactivate out-of-stock items
     try {
       const localProducts = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
       let prodsUpdated = false;
@@ -893,7 +971,7 @@ export const storeService = {
       console.warn('Local stock deduction error:', e);
     }
 
-    // 5. Broadcast real-time order creation event to all listening tabs and components
+    // 6. Broadcast real-time order creation event to all listening tabs and components
     try {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('las3yr_order_created', { detail: finalOrder }));
@@ -904,13 +982,24 @@ export const storeService = {
   },
 
   async updateOrderStatus(id: string, status: OrderStatus, note?: string): Promise<Order> {
-    // 1. Update on Server API
-    await fetchApi<Order>(`/api/orders/${id}/status`, {
+    // 1. Update in Firebase Firestore
+    try {
+      await updateDoc(doc(db, 'orders', id), {
+        status,
+        updated_at: new Date().toISOString(),
+        ...(note ? { notes: note } : {}),
+      });
+    } catch (err) {
+      console.warn('Firestore updateOrderStatus error:', err);
+    }
+
+    // 2. Update on Server API
+    fetchApi<Order>(`/api/orders/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status, note }),
-    });
+    }).catch(() => {});
 
-    // 2. Update on Supabase if configured
+    // 3. Update on Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase
@@ -927,7 +1016,7 @@ export const storeService = {
       }
     }
 
-    // 3. Update local cache
+    // 4. Update local cache
     const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
     const index = orders.findIndex((o) => o.id === id || o.order_number === id);
     if (index === -1) {
@@ -940,10 +1029,17 @@ export const storeService = {
   },
 
   async deleteOrder(id: string): Promise<boolean> {
-    // 1. Delete on Server API
-    await fetchApi(`/api/orders/${id}`, { method: 'DELETE' });
+    // 1. Delete in Firebase Firestore
+    try {
+      await deleteDoc(doc(db, 'orders', id));
+    } catch (err) {
+      console.warn('Firestore deleteOrder error:', err);
+    }
 
-    // 2. Delete on Supabase if configured
+    // 2. Delete on Server API
+    fetchApi(`/api/orders/${id}`, { method: 'DELETE' }).catch(() => {});
+
+    // 3. Delete on Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('orders').delete().eq('id', id);
@@ -952,7 +1048,7 @@ export const storeService = {
       }
     }
 
-    // 3. Delete from local cache
+    // 4. Delete from local cache
     const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
     const filtered = orders.filter((o) => o.id !== id && o.order_number !== id);
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, filtered);

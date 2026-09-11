@@ -248,9 +248,23 @@ export const AdminDashboard: React.FC = () => {
     }
   }, [isAdmin, activeTab]);
 
-  // Real-time background sync for orders & inventory (every 4 seconds)
+  // Real-time background sync for orders & inventory (Firestore Real-time + 4s polling)
   useEffect(() => {
     if (!isAdmin) return;
+
+    // Real-time Firestore subscription (immediate notification from any device/Netlify)
+    const unsubscribeFirestore = storeService.subscribeToOrders((firestoreOrders) => {
+      if (firestoreOrders && Array.isArray(firestoreOrders)) {
+        if (ordersCountRef.current > 0 && firestoreOrders.length > ordersCountRef.current) {
+          const diff = firestoreOrders.length - ordersCountRef.current;
+          const newest = firestoreOrders[0];
+          showToast(`🔔 ¡${diff} nuevo pedido registrado! (${newest?.order_number || ''})`, 'success');
+        }
+        ordersCountRef.current = firestoreOrders.length;
+        setOrders(firestoreOrders);
+        setLastOrderSyncTime(new Date());
+      }
+    });
 
     const silentSync = async () => {
       try {
@@ -284,6 +298,7 @@ export const AdminDashboard: React.FC = () => {
 
     const interval = setInterval(silentSync, 4000);
     return () => {
+      unsubscribeFirestore();
       clearInterval(interval);
       window.removeEventListener('las3yr_order_created', handleOrderCreatedEvent);
     };
