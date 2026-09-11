@@ -213,29 +213,32 @@ export const AdminDashboard: React.FC = () => {
 
   const loadAllData = async () => {
     setLoading(true);
-    const [prods, ords, msgs, emails, cats, brs, bans, anns] = await Promise.all([
-      storeService.getProducts({ activeOnly: false }),
-      storeService.getOrders(),
-      storeService.getContactMessages(),
-      storeService.getNewsletterSubscribers(),
-      storeService.getCategories(false),
-      storeService.getBrands(false),
-      storeService.getBanners(false),
-      storeService.getAnnouncements(false),
-    ]);
-    setProducts(prods);
-    setOrders(ords);
-    setMessages(msgs);
-    setNewsletterEmails(emails);
-    setAdminCategories(cats);
-    setAdminBrands(brs);
-    setAdminBanners(
-      [...(bans || [])].sort((a, b) => (Number(a.sort_order) || 1) - (Number(b.sort_order) || 1))
-    );
-    setAdminAnnouncements(anns);
-    ordersCountRef.current = ords.length;
-    setLastOrderSyncTime(new Date());
-    setLoading(false);
+    try {
+      const [prods, ords, msgs, emails, cats, brs, bans, anns] = await Promise.all([
+        storeService.getProducts({ activeOnly: false }).catch(() => []),
+        storeService.getOrders().catch(() => []),
+        storeService.getContactMessages().catch(() => []),
+        storeService.getNewsletterSubscribers().catch(() => []),
+        storeService.getCategories(false).catch(() => []),
+        storeService.getBrands(false).catch(() => []),
+        storeService.getBanners(false).catch(() => []),
+        storeService.getAnnouncements(false).catch(() => []),
+      ]);
+      setProducts(prods || []);
+      setOrders(ords || []);
+      setMessages(msgs || []);
+      setNewsletterEmails(emails || []);
+      setAdminCategories(cats || []);
+      setAdminBrands(brs || []);
+      setAdminBanners(
+        [...(bans || [])].sort((a, b) => (Number(a.sort_order) || 1) - (Number(b.sort_order) || 1))
+      );
+      setAdminAnnouncements(anns || []);
+      ordersCountRef.current = (ords || []).length;
+      setLastOrderSyncTime(new Date());
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -252,19 +255,23 @@ export const AdminDashboard: React.FC = () => {
     const silentSync = async () => {
       try {
         const [ords, prods] = await Promise.all([
-          storeService.getOrders(),
-          storeService.getProducts({ activeOnly: false }),
+          storeService.getOrders().catch(() => null),
+          storeService.getProducts({ activeOnly: false }).catch(() => null),
         ]);
 
-        if (ordersCountRef.current > 0 && ords.length > ordersCountRef.current) {
-          const diff = ords.length - ordersCountRef.current;
-          const newest = ords[0];
-          showToast(`🔔 ¡${diff} nuevo pedido registrado! (${newest?.order_number || ''})`, 'success');
+        if (ords && Array.isArray(ords)) {
+          if (ordersCountRef.current > 0 && ords.length > ordersCountRef.current) {
+            const diff = ords.length - ordersCountRef.current;
+            const newest = ords[0];
+            showToast(`🔔 ¡${diff} nuevo pedido registrado! (${newest?.order_number || ''})`, 'success');
+          }
+          ordersCountRef.current = ords.length;
+          setOrders(ords);
+          setLastOrderSyncTime(new Date());
         }
-        ordersCountRef.current = ords.length;
-        setOrders(ords);
-        setProducts(prods);
-        setLastOrderSyncTime(new Date());
+        if (prods && Array.isArray(prods)) {
+          setProducts(prods);
+        }
       } catch (err) {
         console.warn('Silent sync error:', err);
       }
@@ -1012,11 +1019,25 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 <button
-                  onClick={loadAllData}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#EFE9E1] text-xs font-bold text-[#163E2B] hover:bg-[#FAF8F5] cursor-pointer shadow-2xs transition"
+                  type="button"
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const ords = await storeService.getOrders();
+                      setOrders(ords);
+                      ordersCountRef.current = ords.length;
+                      setLastOrderSyncTime(new Date());
+                      showToast(`Sincronización completada: ${ords.length} pedidos encontrados`, 'success');
+                    } catch {
+                      showToast('Error al sincronizar pedidos desde el servidor', 'error');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#163E2B] text-white text-xs font-bold hover:bg-[#0F2B1E] cursor-pointer shadow-xs transition"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Actualizar</span>
+                  <span>Sincronizar Pedidos Servidor</span>
                 </button>
               </div>
             </div>
@@ -1691,11 +1712,11 @@ export const AdminDashboard: React.FC = () => {
                           {(Number(p.stock) || 0) <= 0 && (
                             <button
                               type="button"
-                              onClick={() => handleQuickRestock(p.id, 5)}
+                              onClick={() => handleQuickRestock(p.id, 1)}
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-[10px] transition cursor-pointer"
                               title="Reabastecer con 5 unidades y activar producto"
                             >
-                              +5 Stock
+                              +1 Stock
                             </button>
                           )}
                           <button

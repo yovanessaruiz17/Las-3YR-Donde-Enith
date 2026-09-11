@@ -1,5 +1,35 @@
 [
   {
+    "id": "ord-1789138203938",
+    "order_number": "3YR-266911",
+    "customer_name": "Dispositivo Remoto",
+    "customer_email": "",
+    "customer_phone": "3009998877",
+    "whatsapp": "3009998877",
+    "address": "",
+    "city": "Cartagena",
+    "department": "Bolívar",
+    "notes": "",
+    "subtotal": 0,
+    "shipping": 0,
+    "total": 99000,
+    "origin": "Web",
+    "payment_method": "Contraentrega",
+    "delivery_method": "Envío a domicilio",
+    "status": "Pendiente",
+    "items": [
+      {
+        "product_id": "prod-1",
+        "product_name": "Ekos Maracuyá Frescor",
+        "quantity": 1,
+        "unit_price": 89900,
+        "subtotal": 89900
+      }
+    ],
+    "created_at": "2026-09-11T14:50:03.938Z",
+    "updated_at": "2026-09-11T14:50:03.938Z"
+  },
+  {
     "id": "ord-1789073340546",
     "order_number": "3YR-268780",
     "customer_name": "Test User",

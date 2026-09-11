@@ -231,8 +231,8 @@ export const serverStorage = {
 
     const existing = products[idx];
     const newStock = typeof updates.stock === 'number' ? Math.max(0, updates.stock) : (existing.stock ?? 1);
-    // Si stock >= 1 queda activado; si queda en 0 queda desactivado
-    const newActive = newStock > 0 ? (updates.active !== undefined ? updates.active : true) : false;
+    // Regla de inventario: productos con stock >= 1 quedan activados; solo si queda en 0 se desactivan
+    const newActive = newStock > 0;
 
     products[idx] = {
       ...existing,

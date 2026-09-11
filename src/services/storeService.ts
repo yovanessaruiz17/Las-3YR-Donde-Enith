@@ -68,11 +68,15 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T | null
   try {
     const res = await fetch(url, {
       cache: 'no-store',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...options?.headers },
       ...options,
     });
     if (res.ok) {
-      return (await res.json()) as T;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return (await res.json()) as T;
+      }
     }
     return null;
   } catch {
@@ -128,11 +132,11 @@ export const storeService = {
 
     // Regla de inventario: los productos con stock >= 1 están activados y mostrándose; solo si queda en 0 se desactiva
     rawProducts = rawProducts.map((p) => {
-      const stock = typeof p.stock === 'number' ? p.stock : 1;
+      const stock = typeof p.stock === 'number' ? Math.max(0, p.stock) : 1;
       return {
         ...p,
         stock,
-        active: stock > 0 ? (p.active !== false) : false,
+        active: stock > 0,
       };
     });
 
@@ -260,7 +264,7 @@ export const storeService = {
 
     const rawStock = sanitizeNumber(productData.stock, 1);
     // Regla de inventario: productos con stock >= 1 están activados y mostrándose; solo si queda en 0 se desactiva
-    const isActive = rawStock > 0 ? (productData.active !== undefined ? Boolean(productData.active) : true) : false;
+    const isActive = rawStock > 0;
 
     const isFeatured = productData.featured !== undefined 
       ? Boolean(productData.featured) 
@@ -393,11 +397,7 @@ export const storeService = {
     if ('stock' in cleanUpdates) {
       cleanUpdates.stock = sanitizeNumber(cleanUpdates.stock, 0);
       // Regla de inventario: productos con stock >= 1 quedan activados; si queda en 0 se desactivan
-      if (cleanUpdates.stock <= 0) {
-        cleanUpdates.active = false;
-      } else if (cleanUpdates.active === undefined) {
-        cleanUpdates.active = true;
-      }
+      cleanUpdates.active = cleanUpdates.stock > 0;
     }
     if ('compare_price' in cleanUpdates) cleanUpdates.compare_price = cleanUpdates.compare_price ? sanitizeNumber(cleanUpdates.compare_price) : null;
     if ('discount_percentage' in cleanUpdates) cleanUpdates.discount_percentage = sanitizeNumber(cleanUpdates.discount_percentage, 0);
@@ -727,12 +727,12 @@ export const storeService = {
 
       if (unsynced.length > 0) {
         // Automatically sync pending local orders to server so all devices see them!
-        fetchApi<{ success: boolean; orders: Order[] }>('/api/orders/sync', {
+        const syncRes = await fetchApi<{ success: boolean; orders: Order[] }>('/api/orders/sync', {
           method: 'POST',
           body: JSON.stringify({ orders: unsynced }),
-        }).catch((e) => console.warn('Order sync error:', e));
+        });
 
-        const merged = [...unsynced, ...serverOrders].sort(
+        const merged = syncRes?.orders || [...unsynced, ...serverOrders].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
         setLocalData(LOCAL_STORAGE_KEYS.ORDERS, merged);
