@@ -248,20 +248,20 @@ export const AdminDashboard: React.FC = () => {
     }
   }, [isAdmin, activeTab]);
 
-  // Real-time background sync for orders & inventory (Firestore Real-time + 4s polling)
+  // Real-time background sync for orders & inventory (Supabase Realtime + polling)
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Real-time Firestore subscription (immediate notification from any device/Netlify)
-    const unsubscribeFirestore = storeService.subscribeToOrders((firestoreOrders) => {
-      if (firestoreOrders && Array.isArray(firestoreOrders)) {
-        if (ordersCountRef.current > 0 && firestoreOrders.length > ordersCountRef.current) {
-          const diff = firestoreOrders.length - ordersCountRef.current;
-          const newest = firestoreOrders[0];
+    // Real-time Supabase subscription (immediate notification from any device/Netlify)
+    const unsubscribeOrders = storeService.subscribeToOrders((freshOrders) => {
+      if (freshOrders && Array.isArray(freshOrders)) {
+        if (ordersCountRef.current > 0 && freshOrders.length > ordersCountRef.current) {
+          const diff = freshOrders.length - ordersCountRef.current;
+          const newest = freshOrders[0];
           showToast(`🔔 ¡${diff} nuevo pedido registrado! (${newest?.order_number || ''})`, 'success');
         }
-        ordersCountRef.current = firestoreOrders.length;
-        setOrders(firestoreOrders);
+        ordersCountRef.current = freshOrders.length;
+        setOrders(freshOrders);
         setLastOrderSyncTime(new Date());
       }
     });
@@ -298,7 +298,7 @@ export const AdminDashboard: React.FC = () => {
 
     const interval = setInterval(silentSync, 4000);
     return () => {
-      unsubscribeFirestore();
+      unsubscribeOrders();
       clearInterval(interval);
       window.removeEventListener('las3yr_order_created', handleOrderCreatedEvent);
     };

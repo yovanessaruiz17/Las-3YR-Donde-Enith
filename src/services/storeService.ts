@@ -1,14 +1,4 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { db } from '../lib/firebase';
-import {
-  collection,
-  doc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-} from 'firebase/firestore';
 import {
   Product,
   Category,
@@ -726,38 +716,100 @@ export const storeService = {
 
   // ORDERS
   async getOrders(): Promise<Order[]> {
-    // 1. Firebase Firestore Cloud Database (Instant Multi-Device & Netlify Sync)
-    try {
-      const snap = await getDocs(collection(db, 'orders'));
-      const firestoreOrders: Order[] = [];
-      snap.forEach((d) => {
-        firestoreOrders.push(d.data() as Order);
-      });
+    // 1. Supabase Cloud Database (Primary data source)
+    if (isSupabaseConfigured && supabase) {
+      try {
+        let { data, error } = await supabase
+          .from('orders')
+          .select('*, items:order_items(*)')
+          .order('created_at', { ascending: false });
 
-      // Synchronize any pending local orders created offline or previously
-      const localOrders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
-      const unsynced = localOrders.filter(
-        (lo) => !firestoreOrders.some((fo) => fo.id === lo.id || fo.order_number === lo.order_number)
-      );
-
-      if (unsynced.length > 0) {
-        for (const u of unsynced) {
-          try {
-            await setDoc(doc(db, 'orders', u.id), u);
-            firestoreOrders.push(u);
-          } catch {}
+        if (error) {
+          console.warn('Supabase getOrders relation query warning, falling back to orders select:', error.message);
+          const simpleRes = await supabase
+            .from('orders')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (!simpleRes.error && simpleRes.data) {
+            data = simpleRes.data;
+            error = null;
+          }
         }
-      }
 
-      if (firestoreOrders.length > 0) {
-        firestoreOrders.sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        setLocalData(LOCAL_STORAGE_KEYS.ORDERS, firestoreOrders);
-        return firestoreOrders;
+        if (!error && data && Array.isArray(data)) {
+          const cloudOrders: Order[] = data.map((o: any) => {
+            let parsedItems = [];
+            if (Array.isArray(o.items) && o.items.length > 0) {
+              parsedItems = o.items;
+            } else if (Array.isArray(o.order_items) && o.order_items.length > 0) {
+              parsedItems = o.order_items;
+            } else if (typeof o.items === 'string') {
+              try { parsedItems = JSON.parse(o.items); } catch {}
+            }
+            return {
+              ...o,
+              items: parsedItems,
+            };
+          });
+
+          // Sync any local pending orders created offline to Supabase
+          const localOrders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
+          const unsynced = localOrders.filter(
+            (lo) => !cloudOrders.some((co) => co.id === lo.id || co.order_number === lo.order_number)
+          );
+
+          if (unsynced.length > 0) {
+            for (const u of unsynced) {
+              try {
+                await supabase.from('orders').upsert([
+                  {
+                    id: u.id,
+                    order_number: u.order_number,
+                    customer_name: u.customer_name,
+                    customer_email: u.customer_email || '',
+                    customer_phone: u.customer_phone,
+                    whatsapp: u.whatsapp || u.customer_phone,
+                    address: u.address || '',
+                    city: u.city || 'Cartagena',
+                    department: u.department || 'Bolívar',
+                    notes: u.notes || '',
+                    subtotal: u.subtotal || 0,
+                    shipping: u.shipping || 0,
+                    total: u.total,
+                    origin: u.origin || 'Web',
+                    payment_method: u.payment_method,
+                    delivery_method: u.delivery_method,
+                    status: u.status || 'Pendiente',
+                    created_at: u.created_at,
+                  },
+                ]);
+                if (u.items && u.items.length > 0) {
+                  const itemsPayload = u.items.map((it) => ({
+                    order_id: u.id,
+                    product_id: it.product_id,
+                    product_name: it.product_name,
+                    quantity: it.quantity,
+                    unit_price: it.unit_price,
+                    subtotal: it.subtotal,
+                  }));
+                  await supabase.from('order_items').upsert(itemsPayload);
+                }
+                cloudOrders.push(u);
+              } catch (e) {
+                console.warn('Error syncing pending local order to Supabase:', e);
+              }
+            }
+          }
+
+          cloudOrders.sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          setLocalData(LOCAL_STORAGE_KEYS.ORDERS, cloudOrders);
+          return cloudOrders;
+        }
+      } catch (err) {
+        console.warn('Supabase getOrders error:', err);
       }
-    } catch (err) {
-      console.warn('Firestore getOrders fallback:', err);
     }
 
     // 2. Central Server API (if server is reachable)
@@ -785,53 +837,34 @@ export const storeService = {
       return serverOrders;
     }
 
-    // 3. Fallback to Supabase if configured
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*, items:order_items(*)')
-          .order('created_at', { ascending: false });
-        if (!error && data) {
-          setLocalData(LOCAL_STORAGE_KEYS.ORDERS, data as Order[]);
-          return data as Order[];
-        }
-      } catch (err) {
-        console.warn('Supabase getOrders fallback', err);
-      }
-    }
-
-    // 4. Fallback to local storage
+    // 3. Fallback to local storage
     return getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
   },
 
-  // Real-time listener for Firestore orders
+  // Real-time listener for Supabase orders
   subscribeToOrders(callback: (orders: Order[]) => void): () => void {
-    try {
-      const unsub = onSnapshot(
-        collection(db, 'orders'),
-        (snapshot) => {
-          const ords: Order[] = [];
-          snapshot.forEach((d) => {
-            ords.push(d.data() as Order);
-          });
-          ords.sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          );
-          if (ords.length > 0) {
-            setLocalData(LOCAL_STORAGE_KEYS.ORDERS, ords);
-            callback(ords);
-          }
-        },
-        (err) => {
-          console.warn('Firestore onSnapshot listener error:', err);
-        }
-      );
-      return unsub;
-    } catch (err) {
-      console.warn('subscribeToOrders error:', err);
-      return () => {};
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const channel = supabase
+          .channel('public:orders_realtime')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'orders' },
+            async () => {
+              const freshOrders = await storeService.getOrders();
+              callback(freshOrders);
+            }
+          )
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
+      } catch (err) {
+        console.warn('Supabase Realtime subscription error:', err);
+      }
     }
+    return () => {};
   },
 
   async getOrderById(id: string): Promise<Order | null> {
@@ -875,11 +908,51 @@ export const storeService = {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Save directly to Firebase Firestore Cloud Database (Instant cross-device & Netlify availability)
-    try {
-      await setDoc(doc(db, 'orders', newOrder.id), newOrder);
-    } catch (err) {
-      console.warn('Firestore setDoc order error:', err);
+    // 1. Save directly to Supabase Cloud Database
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error: orderError } = await supabase.from('orders').insert([
+          {
+            id: newOrder.id,
+            order_number: newOrder.order_number,
+            customer_name: newOrder.customer_name,
+            customer_email: newOrder.customer_email,
+            customer_phone: newOrder.customer_phone,
+            whatsapp: newOrder.whatsapp,
+            address: newOrder.address,
+            city: newOrder.city,
+            department: newOrder.department,
+            notes: newOrder.notes,
+            subtotal: newOrder.subtotal,
+            shipping: newOrder.shipping,
+            total: newOrder.total,
+            origin: newOrder.origin,
+            payment_method: newOrder.payment_method,
+            delivery_method: newOrder.delivery_method,
+            status: newOrder.status,
+            created_at: newOrder.created_at,
+          },
+        ]);
+
+        if (orderError) {
+          console.error('Supabase error inserting into orders table:', orderError.message, orderError.details, orderError.hint);
+        } else if (newOrder.items && newOrder.items.length > 0) {
+          const itemsPayload = newOrder.items.map((it) => ({
+            order_id: newOrder.id,
+            product_id: it.product_id,
+            product_name: it.product_name,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            subtotal: it.subtotal,
+          }));
+          const { error: itemsError } = await supabase.from('order_items').insert(itemsPayload);
+          if (itemsError) {
+            console.warn('Supabase order_items insert warning:', itemsError.message);
+          }
+        }
+      } catch (err) {
+        console.error('Supabase createOrder unexpected error:', err);
+      }
     }
 
     // 2. Post to Server API (if server is available)
@@ -890,57 +963,12 @@ export const storeService = {
 
     const finalOrder = serverCreated || newOrder;
 
-    // 3. Also try Supabase if configured
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('orders')
-          .insert([
-            {
-              id: finalOrder.id,
-              order_number: finalOrder.order_number,
-              customer_name: finalOrder.customer_name,
-              customer_email: finalOrder.customer_email,
-              customer_phone: finalOrder.customer_phone,
-              whatsapp: finalOrder.whatsapp,
-              address: finalOrder.address,
-              city: finalOrder.city,
-              department: finalOrder.department,
-              notes: finalOrder.notes,
-              subtotal: finalOrder.subtotal,
-              shipping: finalOrder.shipping,
-              total: finalOrder.total,
-              origin: finalOrder.origin,
-              payment_method: finalOrder.payment_method,
-              delivery_method: finalOrder.delivery_method,
-              status: finalOrder.status,
-            },
-          ])
-          .select()
-          .single();
-
-        if (!error && data && finalOrder.items.length > 0) {
-          const itemsPayload = finalOrder.items.map((it) => ({
-            order_id: data.id,
-            product_id: it.product_id,
-            product_name: it.product_name,
-            quantity: it.quantity,
-            unit_price: it.unit_price,
-            subtotal: it.subtotal,
-          }));
-          await supabase.from('order_items').insert(itemsPayload);
-        }
-      } catch (err) {
-        console.warn('Supabase createOrder fallback', err);
-      }
-    }
-
-    // 4. Save to local storage cache
+    // 3. Save to local storage cache
     const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
     orders.unshift(finalOrder);
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, orders);
 
-    // 5. Update local products inventory: deduct stock & auto-deactivate out-of-stock items
+    // 4. Update local products inventory: deduct stock & auto-deactivate out-of-stock items
     try {
       const localProducts = getLocalData<Product[]>(LOCAL_STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
       let prodsUpdated = false;
@@ -971,7 +999,7 @@ export const storeService = {
       console.warn('Local stock deduction error:', e);
     }
 
-    // 6. Broadcast real-time order creation event to all listening tabs and components
+    // 5. Broadcast real-time order creation event to all listening tabs and components
     try {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('las3yr_order_created', { detail: finalOrder }));
@@ -982,24 +1010,7 @@ export const storeService = {
   },
 
   async updateOrderStatus(id: string, status: OrderStatus, note?: string): Promise<Order> {
-    // 1. Update in Firebase Firestore
-    try {
-      await updateDoc(doc(db, 'orders', id), {
-        status,
-        updated_at: new Date().toISOString(),
-        ...(note ? { notes: note } : {}),
-      });
-    } catch (err) {
-      console.warn('Firestore updateOrderStatus error:', err);
-    }
-
-    // 2. Update on Server API
-    fetchApi<Order>(`/api/orders/${id}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status, note }),
-    }).catch(() => {});
-
-    // 3. Update on Supabase if configured
+    // 1. Update on Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase
@@ -1016,7 +1027,13 @@ export const storeService = {
       }
     }
 
-    // 4. Update local cache
+    // 2. Update on Server API
+    fetchApi<Order>(`/api/orders/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note }),
+    }).catch(() => {});
+
+    // 3. Update local cache
     const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
     const index = orders.findIndex((o) => o.id === id || o.order_number === id);
     if (index === -1) {
@@ -1029,26 +1046,20 @@ export const storeService = {
   },
 
   async deleteOrder(id: string): Promise<boolean> {
-    // 1. Delete in Firebase Firestore
-    try {
-      await deleteDoc(doc(db, 'orders', id));
-    } catch (err) {
-      console.warn('Firestore deleteOrder error:', err);
-    }
-
-    // 2. Delete on Server API
-    fetchApi(`/api/orders/${id}`, { method: 'DELETE' }).catch(() => {});
-
-    // 3. Delete on Supabase if configured
+    // 1. Delete on Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
+        await supabase.from('order_items').delete().eq('order_id', id);
         await supabase.from('orders').delete().eq('id', id);
       } catch (err) {
         console.warn('Supabase deleteOrder fallback', err);
       }
     }
 
-    // 4. Delete from local cache
+    // 2. Delete on Server API
+    fetchApi(`/api/orders/${id}`, { method: 'DELETE' }).catch(() => {});
+
+    // 3. Delete from local cache
     const orders = getLocalData<Order[]>(LOCAL_STORAGE_KEYS.ORDERS, []);
     const filtered = orders.filter((o) => o.id !== id && o.order_number !== id);
     setLocalData(LOCAL_STORAGE_KEYS.ORDERS, filtered);
